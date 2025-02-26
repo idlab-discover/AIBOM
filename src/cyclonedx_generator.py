@@ -54,27 +54,40 @@ def generate_cyclonedx_format(aibom, output_folder):
 
     installed_components = []  # Store installed components for dependencies
     # Installed Packages (Dependencies)
-    for package in aibom.get("installed_packages", []):
+    for package, version in aibom.get("installed_packages", {}).items():
         library_component = Component(
             type=ComponentType.LIBRARY,
             name=package,
-            version="not yet done",
-            bom_ref="package",
+            version=version if version else "unknown",  # Use actual version or "unknown" if missing
+            bom_ref=f"package-{package}",  # Unique reference for each package
         )
         bom.components.add(library_component)
         installed_components.append(library_component)  # Add to the list of dependencies
 
     # Docker Image Details
     if "docker_image" in aibom:
+        docker_image = aibom["docker_image"]
+
         docker_component = Component(
             type=ComponentType.CONTAINER,
-            name=aibom["docker_image"].get("image_name", "Unknown Image"),
-            version=aibom["docker_image"].get("image_tag", "Unknown Version"),
+            name=docker_image.get("image_name", "Unknown Image"),
+            version=docker_image.get("image_version", "Unknown Version"),
             bom_ref="docker-image",
+            properties=[
+                Property(name="base_image", value=docker_image.get("base_image", "Unknown Base Image")),
+                Property(name="layers", value=str(docker_image.get("layers", []))),  # Convert list to string
+                Property(name="environment_variables", value=str(docker_image.get("env_variables", []))),  # Convert list to string
+                Property(name="cmd", value=str(docker_image.get("cmd", []))),  # Convert list to string
+                Property(name="entrypoint", value=docker_image.get("entrypoint", None)),
+                Property(name="working_dir", value=docker_image.get("working_dir", "/app")),
+                Property(name="volumes", value=str(docker_image.get("volumes", []))),  # Convert list to string
+                Property(name="exposed_ports", value=str(docker_image.get("exposed_ports", []))),  # Convert list to string
+                Property(name="filesystem_changes", value=str(docker_image.get("filesystem_changes", [])))  # Convert list to string
+            ]
         )
         bom.components.add(docker_component)
 
-    # Mounted Data Access (Datasets)
+# Mounted Data Access (Datasets)
     dataset_components = []  # Store dataset components for dependencies
     # Add mounted data access as dataset components
     for file_entry in aibom.get("mounted_data_access", []):

@@ -30,8 +30,9 @@ def collect_initial_aibom_data(dockerfile_path, output_folder, project_root, con
     # Extract environment and installed packages before training
     installed_packages = extractors.installed_packages.extract_installed_packages(container)
     environment_info = extractors.environment_info.extract_environment_info(container)
-    docker_image_details = extractors.docker_image_details.extract_docker_image_details(dockerfile_path)
+    docker_image_details = extractors.docker_image_details.extract_docker_image_details(container)
     gpu_info = extractors.gpu_info.extract_gpu_info(container)
+
 
     # Initialize the AIBoM with start data
     aibom.update({
