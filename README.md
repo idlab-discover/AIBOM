@@ -1,82 +1,64 @@
-mlmd-bom: MLMD -> CycloneDX/SPDX PoC
-====================================
+# MLMD-BOM
 
-This is a proof-of-concept that uses the official ML Metadata (MLMD) library to create fake model metadata, extract model + dependency info, and generate both CycloneDX and SPDX BOMs.
+Proof of Concept: Generate CycloneDX and SPDX BOMs from ML Metadata (MLMD)
 
-What it does
-------------
-- Creates an in-memory MLMD store
-- Inserts a Model artifact ("FakeNet" 1.0.0) and Library artifacts for numpy and tensorflow
-- Links them via an Execution (inputs: libraries, output: model)
-- Extracts the model and its dependencies from MLMD
-- Emits:
-	- CycloneDX JSON: `bom.cyclonedx.json`
-	- CycloneDX XML: `bom.cyclonedx.xml`
-	- SPDX JSON: `bom.spdx.json`
-	- Extracted metadata snapshot: `extracted_mlmd.json`
+## Overview
 
-Quick start
------------
+This project demonstrates how to:
+- Create an in-memory MLMD (ML Metadata) store with a fake model and dependencies.
+- Extract model and dependency metadata.
+- Export the metadata as CycloneDX and SPDX Bill of Materials (BOM) files.
 
-1) Create and activate a virtualenv (optional but recommended):
+Outputs are written to the `output/` directory.
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
 
-2) Install dependencies:
+## Requirements
+
+- Docker
+- Docker Compose
+
+You do **not** need to install Python or any dependencies locally. Everything runs in containers.
+
+## Usage
+
+### Build and Run with Docker Compose
+
+To build and run the project:
 
 ```bash
-pip install -r requirements.txt
+docker-compose up --build
 ```
 
-3) Run the PoC (local will still run, but full MLMD mode is via Docker):
+This will:
+- Build the Docker image
+- Run the main script inside a container
+- Write the following files to `output/` (in your project directory):
+  - `extracted_mlmd.json`
+  - `bom.cyclonedx.json`
+  - `bom.cyclonedx.xml`
+  - `bom.spdx.json`
+
+You can change the output directory by setting the `OUTPUT_DIR` environment variable:
 
 ```bash
-python3 main.py
+OUTPUT_DIR=some/other/dir docker-compose up --build
 ```
 
-You should see the BOM files created under the `output/` directory.
 
-Use Docker to run with a Python version that supports MLMD:
+## Project Structure
 
-```bash
-docker build -t mlmd-bom .
-docker run --rm -v "$PWD:/app" -w /app mlmd-bom
+```
+app/
+  main.py              # Main entry point
+  mlmd_support.py      # MLMD utility functions
+  cyclonedx_gen.py     # CycloneDX BOM generation
+  spdx_gen.py          # SPDX BOM generation
+output/                # Generated output files (mounted from container)
+requirements.txt       # Python dependencies (used in Docker build)
+Dockerfile             # Docker support
+docker-compose.yml     # Docker Compose support
 ```
 
-Using docker-compose:
+## License
 
-```bash
-docker compose up --build --abort-on-container-exit
-```
-
-Quick check inside container that MLMD is importable:
-
-```bash
-docker run --rm mlmd-bom python - <<'PY'
-from ml_metadata.metadata_store import metadata_store
-from ml_metadata.proto import metadata_store_pb2
-print('MLMD OK:', metadata_store, metadata_store_pb2)
-PY
-```
-
-Notes
------
-- MLMD is configured to use an in-memory SQLite DB, so nothing is persisted across runs.
-- The model and dependency metadata are intentionally minimal for clarity.
-
-Create a GitHub repo (main branch)
-----------------------------------
-
-```bash
-git init
-git add .
-git commit -m "feat: MLMD -> CycloneDX/SPDX PoC"
-git branch -M main
-git remote add origin https://github.com/<your-username>/<your-repo>.git
-git push -u origin main
-```
-
-MLMD BOM Prototype
+See [LICENSE](LICENSE) for details.
