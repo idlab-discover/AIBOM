@@ -3,9 +3,12 @@ services:
     build: .
     container_name: mlmd-bom-app
     working_dir: /app
+    user: "0:0"
     volumes:
       - ./app:/app
       - ./output:/app/output
     environment:
       - OUTPUT_DIR=/app/output
+      - MULTI_BOM=${MULTI_BOM:-1}
+      - EXTRACT_CONTEXT=${EXTRACT_CONTEXT:-}
     command: python main.py
