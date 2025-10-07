@@ -1,0 +1,4 @@
+# Minimal dependencies for the MLMD -> BOM PoC
+ml-metadata==1.14.0; python_version < "3.12"
+cyclonedx-python-lib>=7.4.3
+spdx-tools>=0.8.3
