@@ -36,17 +36,29 @@ This will:
 
 Optional environment variables:
 
-- EXTRACT_CONTEXT: filter which MLMD context to export (default exports all fake contexts)
+- EXTRACT_CONTEXT: filter which MLMD context to export (default exports all fake contexts). Supports:
+  - Experiment contexts: `exp1`, `exp2` (directly attributed model artifacts)
+  - Pipeline context: `demo-pipeline` (models discovered via executions associated to the pipeline)
 
-Example:
+Examples:
 
 ```bash
-EXTRACT_CONTEXT=FakeNet docker-compose up --build
+# Export all (both versions) — includes lineage
+docker-compose up --build
+
+# Only the first experiment — emits a single-version BOM with no lineage
+EXTRACT_CONTEXT=exp1 docker-compose up --build
+
+# Only the second experiment — emits a single-version BOM with no lineage
+EXTRACT_CONTEXT=exp2 docker-compose up --build
+
+# Filter by pipeline context — finds models produced by that pipeline
+EXTRACT_CONTEXT=demo-pipeline docker-compose up --build
 ```
 
 ## Lineage and relationships
 
-Each model version is exported to its own BOM files, e.g. `FakeNet-1.0.0` and `FakeNet-1.1.0`. The newer version links to its immediate parent.
+Each model version is exported to its own BOM files, e.g. `FakeNet-1.0.0` and `FakeNet-1.1.0`. The newer version links to its immediate parent when both versions are present in the selection. If filtering results in a single version (e.g., `exp1` only), the BOM is emitted without lineage.
 
 - CycloneDX (specVersion 1.6):
   - Dependencies are represented in the dependency graph.
@@ -58,8 +70,6 @@ Each model version is exported to its own BOM files, e.g. `FakeNet-1.0.0` and `F
   - `externalMaps` provides the cross-document mapping for that parent reference.
 
 Why does SPDX show more relationships? SPDX models each edge explicitly (one Relationship per dependency and lineage link), whereas CycloneDX concentrates dependency information in a graph structure and puts lineage in external references, making it look more compact.
-
-Note: Combined/"multi" BOMs are currently disabled; only per-model BOMs are written. Any `MULTI_BOM` environment variable is ignored by the current code path.
 
 ## Project structure
 
