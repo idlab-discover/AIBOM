@@ -8,7 +8,5 @@ services:
       - ./app:/app
       - ./output:/app/output
     environment:
-      - OUTPUT_DIR=/app/output
-      - MULTI_BOM=${MULTI_BOM:-1}
       - EXTRACT_CONTEXT=${EXTRACT_CONTEXT:-}
     command: python main.py

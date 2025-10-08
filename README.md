@@ -36,13 +36,11 @@ This will:
 
 Optional environment variables:
 
-- OUTPUT_DIR: change output directory (default `output`)
 - EXTRACT_CONTEXT: filter which MLMD context to export (default exports all fake contexts)
 
-Examples:
+Example:
 
 ```bash
-OUTPUT_DIR=/tmp/boms docker-compose up --build
 EXTRACT_CONTEXT=FakeNet docker-compose up --build
 ```
 

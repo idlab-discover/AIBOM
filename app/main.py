@@ -4,22 +4,19 @@ from __future__ import annotations
 """
 PoC: Build fake MLMD metadata and export CycloneDX and SPDX BOMs.
 - Creates an in-memory MLMD store with fake model/deps
-- Writes outputs into ./output or $OUTPUT_DIR
+- Writes outputs into ./output
 """
 
 import json
 import os
 import sys
 from pathlib import Path
-import hashlib
 from typing import List
 
 from mlmd_support import connect_mlmd, create_fake_mlmd
 from extraction import extract_model_and_deps
-from cyclonedx_gen import create_cyclonedx_bom, create_cyclonedx_bom_multi, write_cyclonedx_files
-from spdx_gen import create_spdx_document, create_spdx_document_multi, write_spdx_json
-from spdx3_gen import create_spdx3_document, create_spdx3_document_multi
-from spdx_tools.spdx.model import ExternalDocumentRef, Checksum, ChecksumAlgorithm
+from cyclonedx_gen import create_cyclonedx_bom, write_cyclonedx_files
+from spdx3_gen import create_spdx3_document
 
 
 def write_metadata_snapshot(md, path: str) -> None:
@@ -30,8 +27,8 @@ def write_metadata_snapshot(md, path: str) -> None:
 
 def main(argv: List[str]) -> int:
 
-    # Output dir
-    out_dir = Path(os.environ.get("OUTPUT_DIR", "output")).resolve()
+    # Output dir (fixed, no environment override)
+    out_dir = Path("output").resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     cdx_dir = out_dir / "cyclonedx"
     spdx_dir = out_dir / "spdx"
@@ -98,17 +95,6 @@ def main(argv: List[str]) -> int:
 
     # Emit per-model BOMs
 
-    def make_external_spdx_ref(doc_name: str, namespace: str, file_path: Path) -> ExternalDocumentRef:
-        # Compute SHA1 for ExternalDocumentRef as required by SPDX 2.3
-        sha1 = hashlib.sha1()
-        with open(file_path, 'rb') as fh:
-            for chunk in iter(lambda: fh.read(8192), b''):
-                sha1.update(chunk)
-        ch = Checksum(algorithm=ChecksumAlgorithm.SHA1, value=sha1.hexdigest())
-        # ExternalDocumentRef id must start with 'DocumentRef-'
-        ext_id = f"DocumentRef-{doc_name}"
-        # spdx-tools 0.8.x expects positional: (external_document_id, spdx_document_namespace, checksum)
-        return ExternalDocumentRef(ext_id, namespace, ch)
     # Emit per-model BOMs for all versions that participate in lineage
     for name, items in by_name.items():
         items.sort(key=lambda x: version_key(x.get("version", "")))
