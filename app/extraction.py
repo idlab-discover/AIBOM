@@ -30,9 +30,27 @@ def extract_model_and_deps(
         if not ctxs:
             raise RuntimeError(f"No context named {context_name}")
         ctx = ctxs[0]
+        # Primary: artifacts explicitly attributed to the context
         artifacts_in_ctx = store.get_artifacts_by_context(ctx.id)
         model_ids = [a.id for a in artifacts_in_ctx if get_type_name_by_id(a.type_id) == model_type]
-        models = store.get_artifacts_by_id(model_ids)
+        models = store.get_artifacts_by_id(model_ids) if model_ids else []
+
+        # Fallback: some contexts (e.g., Pipeline) are associated to executions, not artifacts.
+        # Gather models that are OUTPUTs of executions in this context.
+        if not models:
+            execs_in_ctx = []
+            try:
+                # Prefer direct API if available
+                execs_in_ctx = store.get_executions_by_context(ctx.id)
+            except Exception:
+                execs_in_ctx = []
+            if execs_in_ctx:
+                ex_ids = [e.id for e in execs_in_ctx]
+                evts = store.get_events_by_execution_ids(ex_ids)
+                out_artifact_ids = [e.artifact_id for e in evts if e.type == metadata_store_pb2.Event.OUTPUT]
+                out_artifacts = store.get_artifacts_by_id(out_artifact_ids) if out_artifact_ids else []
+                model_ids2 = [a.id for a in out_artifacts if get_type_name_by_id(a.type_id) == model_type]
+                models = store.get_artifacts_by_id(model_ids2) if model_ids2 else []
     else:
         models = store.get_artifacts_by_type(model_type)
     if not models:

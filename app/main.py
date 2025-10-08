@@ -95,11 +95,9 @@ def main(argv: List[str]) -> int:
 
     # Emit per-model BOMs
 
-    # Emit per-model BOMs for all versions that participate in lineage
+    # Emit per-model BOMs for all versions (if no parent exists, emit without lineage)
     for name, items in by_name.items():
         items.sort(key=lambda x: version_key(x.get("version", "")))
-        if len(items) < 2:
-            continue
         # Build a small index for child/parent lookups
         for idx, item in enumerate(items):
             model_name = item.get("model_name", "model")
