@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 """
-PoC: Build fake MLMD metadata and export CycloneDX and SPDX BOMs.
-- Creates an in-memory MLMD store with fake model/deps
+PoC: Populate MLMD from YAML scenarios and export CycloneDX and SPDX BOMs.
+- Creates an in-memory MLMD store from a scenario file
 - Writes outputs into ./output
 """
 
@@ -13,7 +13,8 @@ import sys
 from pathlib import Path
 from typing import List
 
-from mlmd_support import connect_mlmd, create_fake_mlmd
+from mlmd_support import connect_mlmd
+from scenario_loader import populate_mlmd_from_scenario
 from extraction import extract_model_and_deps
 from cyclonedx_gen import create_cyclonedx_bom, write_cyclonedx_files
 from spdx3_gen import create_spdx3_document
@@ -35,9 +36,10 @@ def main(argv: List[str]) -> int:
     cdx_dir.mkdir(parents=True, exist_ok=True)
     spdx_dir.mkdir(parents=True, exist_ok=True)
 
-    # Setup MLMD, create fake data, extract
+    # Setup MLMD, populate from scenario, extract
     store = connect_mlmd()
-    create_fake_mlmd(store)
+    scenario = os.environ.get("SCENARIO_YAML") or "scenarios/demo-complex.yaml"
+    populate_mlmd_from_scenario(store, scenario)
     # Optional filtering by context via env var
     context_name = os.environ.get("EXTRACT_CONTEXT")
     mds = extract_model_and_deps(store, context_name=context_name)

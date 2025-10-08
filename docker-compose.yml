@@ -1,12 +1,29 @@
 services:
   mlmd-bom:
-    build: .
+    build:
+      context: ./app
+      dockerfile: Dockerfile
     container_name: mlmd-bom-app
     working_dir: /app
     user: "0:0"
     volumes:
-      - ./app:/app
       - ./output:/app/output
     environment:
       - EXTRACT_CONTEXT=${EXTRACT_CONTEXT:-}
+      - SCENARIO_YAML=${SCENARIO_YAML:-scenarios/demo-complex.yaml}
     command: python main.py
+
+  bom-viewer:
+    build:
+      context: ./viewer
+      dockerfile: Dockerfile
+    container_name: mlmd-bom-viewer
+    working_dir: /viewer
+    user: "0:0"
+    depends_on:
+      - mlmd-bom
+    volumes:
+      - ./output:/app/output
+    ports:
+      - "8080:8080"
+    command: npm start

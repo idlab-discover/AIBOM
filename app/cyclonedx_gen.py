@@ -52,6 +52,13 @@ def create_cyclonedx_bom(metadata: Dict[str, Any], parent_bom_url: Optional[str]
         description=f"ML model using {metadata.get('framework','')} ({metadata.get('format','')})",
         bom_ref=metadata.get("uri"),
     )
+    # Add extra model properties if supported
+    if Property is not None:
+        for k, v in (metadata.get("properties") or {}).items():
+            try:
+                model_component.properties.add(Property(name=f"ml:{k}", value=str(v)))
+            except Exception:
+                pass
 
     # If a parent BOM URL or BOM-Link info is provided, add an external reference to indicate lineage
     if parent_bom_serial and parent_model_bom_ref:
@@ -111,8 +118,30 @@ def create_cyclonedx_bom(metadata: Dict[str, Any], parent_bom_url: Optional[str]
             bom_ref=dep.get("purl") or dep.get("uri"),
             purl=purl_obj,
         )
+        if Property is not None:
+            for k, v in (dep.get("properties") or {}).items():
+                try:
+                    c.properties.add(Property(name=f"ml:{k}", value=str(v)))
+                except Exception:
+                    pass
         bom.components.add(c)
         created_dep_components.append(c)
+
+    # Produced artifacts (evaluation reports, images, etc.) as external references on model
+    try:
+        for prod in metadata.get("produced", []) or []:
+            label = prod.get("type") or "Produced"
+            url = prod.get("uri") or prod.get("name") or None
+            if ExternalReference and ExternalReferenceType and url:
+                model_component.external_references.add(
+                    ExternalReference(
+                        reference_type=ExternalReferenceType.OTHER,  # type: ignore[arg-type]
+                        url=(XsUri(url) if XsUri else url),  # type: ignore[arg-type]
+                        comment=f"Produced: {label} {prod.get('name') or ''} {prod.get('version') or ''}".strip()
+                    )
+                )
+    except Exception:
+        pass
 
     # Register the dependency graph: model depends on its listed components
     try:

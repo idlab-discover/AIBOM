@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
 from ml_metadata.metadata_store import metadata_store  # type: ignore
 from ml_metadata.proto import metadata_store_pb2  # type: ignore
@@ -58,26 +58,57 @@ def extract_model_and_deps(
 
     def val(prop_map, key):
         v = prop_map.get(key)
-        return getattr(v, "string_value", "") if v is not None else ""
+        if v is None:
+            return ""
+        if hasattr(v, "string_value") and v.string_value:
+            return v.string_value
+        if hasattr(v, "int_value") and v.int_value:
+            return str(v.int_value)
+        if hasattr(v, "double_value") and v.double_value:
+            return str(v.double_value)
+        return ""
+
+    def all_props(prop_map) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        for k, v in prop_map.items():
+            if hasattr(v, "string_value") and v.string_value:
+                out[k] = v.string_value
+            elif hasattr(v, "int_value") and v.int_value:
+                out[k] = v.int_value
+            elif hasattr(v, "double_value") and v.double_value:
+                out[k] = v.double_value
+        return out
 
     results = []
     for model in models:
         events_for_model = store.get_events_by_artifact_ids([model.id])
-        exec_ids = {e.execution_id for e in events_for_model if e.type == metadata_store_pb2.Event.OUTPUT}
+        # Training executions that produced this model
+        exec_ids_out: Set[int] = {e.execution_id for e in events_for_model if e.type == metadata_store_pb2.Event.OUTPUT}
+        # Downstream executions that consume this model (e.g., eval, packaging)
+        exec_ids_in: Set[int] = {e.execution_id for e in events_for_model if e.type == metadata_store_pb2.Event.INPUT}
         deps: List["metadata_store_pb2.Artifact"] = []
-        for ex_id in exec_ids:
+        for ex_id in exec_ids_out:
             evts = store.get_events_by_execution_ids([ex_id])
             input_artifact_ids = [e.artifact_id for e in evts if e.type == metadata_store_pb2.Event.INPUT]
             if input_artifact_ids:
                 arts = store.get_artifacts_by_id(input_artifact_ids)
                 # Filter out non-Library inputs if desired, but keep all for lineage
                 deps.extend(arts)
+        produced: List["metadata_store_pb2.Artifact"] = []
+        # Include outputs of downstream stages that read this model
+        for ex_id in exec_ids_in:
+            evts = store.get_events_by_execution_ids([ex_id])
+            out_artifact_ids = [e.artifact_id for e in evts if e.type == metadata_store_pb2.Event.OUTPUT]
+            if out_artifact_ids:
+                arts = store.get_artifacts_by_id(out_artifact_ids)
+                produced.extend(arts)
         md = {
             "model_name": val(model.properties, "name") or "unknown",
             "version": val(model.properties, "version"),
             "framework": val(model.properties, "framework"),
             "format": val(model.properties, "format"),
             "uri": model.uri,
+            "properties": {k: v for k, v in all_props(model.properties).items() if k not in ("name", "version", "framework", "format")},
             "dependencies": [
                 {
                     "name": val(a.properties, "name"),
@@ -85,8 +116,19 @@ def extract_model_and_deps(
                     "purl": val(a.properties, "purl"),
                     "uri": a.uri,
                     "type": get_type_name_by_id(a.type_id),
+                    "properties": {k: v for k, v in all_props(a.properties).items() if k not in ("name", "version", "purl")},
                 }
                 for a in deps
+            ],
+            "produced": [
+                {
+                    "name": val(a.properties, "name"),
+                    "version": val(a.properties, "version"),
+                    "uri": a.uri,
+                    "type": get_type_name_by_id(a.type_id),
+                    "properties": {k: v for k, v in all_props(a.properties).items() if k not in ("name", "version")},
+                }
+                for a in produced
             ],
         }
         results.append(md)

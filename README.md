@@ -11,6 +11,8 @@ This project demonstrates how to:
 
 Outputs are written to `output/` with format-specific subfolders.
 
+An optional live HTML viewer is provided to visualize models, dependencies, and lineage. It runs as a small web app and auto-updates when new BOMs are written.
+
 ## Requirements
 
 - Docker
@@ -23,38 +25,40 @@ You do not need to install Python or any dependencies locally. Everything runs i
 ### Build and run
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 This will:
-- Build the Docker image
-- Run the main script inside a container
+- Build the generator image (`mlmd-bom`) and the viewer image (`bom-viewer`)
+- Run the generator once to produce BOMs into `output/`
+- Start a live viewer web app on http://localhost:8080
 - Write files to `output/` (in your project directory), including:
   - `extracted_mlmd.json` and `extracted_mlmd_multi.json`
   - Per-model CycloneDX BOMs in `output/cyclonedx/`, e.g. `FakeNet-1.0.0.cyclonedx.json` and `.xml`
   - Per-model SPDX 3.0 BOMs in `output/spdx/`, e.g. `FakeNet-1.0.0.spdx3.json`
 
-Optional environment variables:
+Environment variables:
 
-- EXTRACT_CONTEXT: filter which MLMD context to export (default exports all fake contexts). Supports:
-  - Experiment contexts: `exp1`, `exp2` (directly attributed model artifacts)
-  - Pipeline context: `demo-pipeline` (models discovered via executions associated to the pipeline)
+- SCENARIO_YAML: path to a YAML file that defines the MLMD scenario to load. Defaults to `scenarios/demo-complex.yaml` bundled with the app.
+- EXTRACT_CONTEXT: filter which MLMD context to export (uses names from your scenario). For the demo scenario, try:
+  - Experiment contexts: `expA`, `expB`
+  - Pipeline context: `demo-pipeline`
 
 Examples:
 
-```bash
-# Export all (both versions) — includes lineage
-docker-compose up --build
+Examples:
+- Default (loads the bundled demo scenario): run the compose command above and open http://localhost:8080
+- Export only one experiment from the demo scenario: set `EXTRACT_CONTEXT=expA` and re-run the generator service; the viewer will auto-refresh when new BOMs are written.
+- Use your own scenario: set `SCENARIO_YAML=app/scenarios/my-scenario.yaml` and re-run the generator service.
 
-# Only the first experiment — emits a single-version BOM with no lineage
-EXTRACT_CONTEXT=exp1 docker-compose up --build
+### Visualize the BOMs (Live viewer)
 
-# Only the second experiment — emits a single-version BOM with no lineage
-EXTRACT_CONTEXT=exp2 docker-compose up --build
+- Open http://localhost:8080 for the combined view (CycloneDX + SPDX).
+- Click a node to see its CycloneDX and SPDX JSON in the side panel; links let you open the full BOM files.
+- Double‑click a model node to open its full BOM(s).
+- Nodes are draggable; dependencies cluster around their model; shared dependencies appear between models; lineage edges are dashed orange.
 
-# Filter by pipeline context — finds models produced by that pipeline
-EXTRACT_CONTEXT=demo-pipeline docker-compose up --build
-```
+The viewer watches `output/cyclonedx` and `output/spdx` and updates automatically when new files are created or existing files change.
 
 ## Lineage and relationships
 
@@ -75,18 +79,23 @@ Why does SPDX show more relationships? SPDX models each edge explicitly (one Rel
 
 ```
 app/
+  Dockerfile           # App container image
+  requirements.txt     # App dependencies
   main.py              # Main entry point
   mlmd_support.py      # MLMD utility functions
   extraction.py        # Extract model + dependencies from MLMD
   cyclonedx_gen.py     # CycloneDX BOM generation (JSON + XML)
   spdx3_gen.py         # SPDX 3.0 JSON generation (per model)
   spdx_gen.py          # SPDX 2.3 generator (present, not used by default)
+viewer/
+  Dockerfile           # Viewer container image (Node)
+  package.json         # Viewer web app dependencies and scripts
+  server.js            # Live viewer server (Express + chokidar)
+  build.js             # Static builder (kept for reference)
 output/
   cyclonedx/           # Per-model CycloneDX BOMs
   spdx/                # Per-model SPDX 3.0 BOMs
-requirements.txt       # Python dependencies (used in Docker build)
-Dockerfile             # Docker support
-docker-compose.yml     # Docker Compose support
+docker-compose.yml     # Docker Compose orchestration
 ```
 
 ## License

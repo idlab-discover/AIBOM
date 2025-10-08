@@ -1,0 +1,54 @@
+# Starter scenario: customize as needed
+
+types:
+  artifact:
+    Model:
+      properties: { name: STRING, version: STRING, framework: STRING, format: STRING }
+    Library:
+      properties: { name: STRING, version: STRING, purl: STRING }
+    Dataset:
+      properties: { name: STRING, split: STRING, version: STRING }
+  execution:
+    TrainingRun:
+      properties: { pipeline: STRING, state: STRING, run_id: STRING }
+  context:
+    Experiment:
+      properties: { note: STRING }
+    Pipeline:
+      properties: { owner: STRING }
+
+contexts:
+  expCustom: { type: Experiment, name: expCustom, properties: { note: "Custom experiment" } }
+  pipeCustom: { type: Pipeline, name: custom-pipeline, properties: { owner: ml-team } }
+
+artifacts:
+  ds:
+    type: Dataset
+    uri: data://custom-dataset/2025-10-08/train
+    properties: { name: custom-dataset, split: train, version: 2025-10-08 }
+    contexts: [pipeCustom]
+  lib_np:
+    type: Library
+    uri: pkg://numpy/1.26.0
+    properties: { name: numpy, version: 1.26.0, purl: pkg:pypi/numpy@1.26.0 }
+  model_v1:
+    type: Model
+    uri: models://my-model/0.1.0
+    properties: { name: MyModel, version: 0.1.0, framework: PyTorch, format: TorchScript }
+
+executions:
+  run1:
+    type: TrainingRun
+    properties: { pipeline: custom-pipeline, state: COMPLETED, run_id: run-100 }
+    contexts: [expCustom, pipeCustom]
+
+events:
+  - { execution: run1, type: INPUT, artifact: ds }
+  - { execution: run1, type: INPUT, artifact: lib_np }
+  - { execution: run1, type: OUTPUT, artifact: model_v1 }
+
+associations:
+  - { context: pipeCustom, execution: run1 }
+
+attributions:
+  - { context: expCustom, artifact: model_v1 }

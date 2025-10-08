@@ -58,10 +58,13 @@ def create_spdx3_document(
             "name": model_name,
             "version": version or None,
             "definedIn": "doc",
+            "properties": [
+                {"name": f"ml:{k}", "value": str(v)} for k, v in (metadata.get("properties") or {}).items()
+            ] or None,
         }
     )
 
-    # Dependencies as Package elements (optional enrichment) — lineage handled via Relationship
+    # Dependencies as Package elements — lineage handled via Relationship
     for idx, dep in enumerate(metadata.get("dependencies", []), start=1):
         elements.append(
             {
@@ -70,6 +73,9 @@ def create_spdx3_document(
                 "name": dep.get("name"),
                 "version": dep.get("version"),
                 "definedIn": "doc",
+                "properties": [
+                    {"name": f"ml:{k}", "value": str(v)} for k, v in (dep.get("properties") or {}).items()
+                ] or None,
             }
         )
         elements.append(
@@ -79,6 +85,32 @@ def create_spdx3_document(
                 "from": f"doc:{pkg_id}",
                 "relationshipType": "dependsOn",
                 "to": f"doc:SPDXRef-Dep-{idx}",
+                "definedIn": "doc",
+            }
+        )
+
+    # Produced artifacts (e.g., evaluation report, container image) as packages with relationships
+    for pidx, prod in enumerate(metadata.get("produced", []), start=1):
+        prod_id = f"SPDXRef-Prod-{pidx}"
+        elements.append(
+            {
+                "type": "Package",
+                "id": prod_id,
+                "name": prod.get("name") or prod.get("type") or f"Produced-{pidx}",
+                "version": prod.get("version"),
+                "definedIn": "doc",
+                "properties": [
+                    {"name": f"ml:{k}", "value": str(v)} for k, v in (prod.get("properties") or {}).items()
+                ] or None,
+            }
+        )
+        elements.append(
+            {
+                "type": "Relationship",
+                "id": f"rel-produced-{pidx}",
+                "from": f"doc:{pkg_id}",
+                "relationshipType": "hasOutput",  # model has output artifact from downstream stages
+                "to": f"doc:{prod_id}",
                 "definedIn": "doc",
             }
         )

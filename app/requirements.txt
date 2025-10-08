@@ -4,3 +4,7 @@ ml-metadata==1.14.0; python_version < "3.12"
 cyclonedx-python-lib>=11.0.0
 # Latest available spdx-tools on PyPI as of now; SPDX 3.0 JSON is produced by our own writer
 spdx-tools>=0.8.3
+
+# Scenario loader
+PyYAML>=6.0
+
