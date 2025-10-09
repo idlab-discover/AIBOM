@@ -12,7 +12,30 @@ const SPDX_DIR = path.join(OUTPUT_ROOT, 'spdx');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-function readJson(p){ try { return JSON.parse(fs.readFileSync(p,'utf8')); } catch { return null; } }
+// --- Logging setup (plain or json) ---
+const LOG_LEVEL = (process.env.LOG_LEVEL || 'info').toLowerCase();
+const LOG_FORMAT = (process.env.LOG_FORMAT || 'plain').toLowerCase();
+const LEVELS = { debug: 10, info: 20, warn: 30, error: 40 };
+const THRESH = LEVELS[LOG_LEVEL] ?? LEVELS.info;
+function log(level, msg, meta) {
+  const lvl = LEVELS[level] ?? LEVELS.info;
+  if (lvl < THRESH) return;
+  const ts = new Date().toISOString();
+  if (LOG_FORMAT === 'json') {
+    const obj = { ts, level, msg, ...(meta || {}) };
+    // Avoid circular and big objects
+    try {
+      console.log(JSON.stringify(obj));
+    } catch {
+      console.log(JSON.stringify({ ts, level, msg }));
+    }
+  } else {
+    const m = meta ? ` ${JSON.stringify(meta)}` : '';
+    console.log(`${ts} ${level.toUpperCase()} viewer: ${msg}${m}`);
+  }
+}
+
+function readJson(p){ try { return JSON.parse(fs.readFileSync(p,'utf8')); } catch (e) { log('debug','failed to parse json',{ file:p, error:String(e)}); return null; } }
 function listJson(dir){ try { return fs.readdirSync(dir).filter(f=>f.endsWith('.json')).map(f=>path.join(dir,f)); } catch { return []; } }
 function safeNodeId(prefix, name, version){ const n=(name||'unknown').trim(); const v=(version||'').trim(); return v?`${prefix}:${n}@${v}`:`${prefix}:${n}`; }
 function relFromView(p){ return path.relative(OUTPUT_ROOT, p); }
@@ -24,7 +47,9 @@ function buildGraph(){
   const bomToModel = {};
   for(const fp of listJson(CX_DIR)){
     const bom = readJson(fp); if(!bom) continue;
-    const serial = bom.serialNumber; const bomVersion = bom.version || 1;
+    let serial = bom.serialNumber; const bomVersion = bom.version || 1;
+    // Normalize serial to not have double 'urn:'
+    if(serial && serial.startsWith('urn:')) serial = serial.slice(4);
     let model = (bom.metadata||{}).component || null;
     if(!model || model.type !== 'application'){
       for(const c of (bom.components||[])) if(c.type==='application'){ model=c; break; }
@@ -56,7 +81,23 @@ function buildGraph(){
       if(c && Object.keys(c).length){ details[depId]=details[depId]||{}; details[depId].cx=c; details[depId].cx_file=rel; }
       g.edges.push({ from:modelId, to:depId, color:'#90a4ae', arrows:'to', title:'depends_on' });
     }
-    for(const er of (model.externalReferences||[])) if(er.type==='bom'){ const pid=bomToModel[er.url]; if(pid){ g.edges.push({ from:pid, to:modelId, color:'#f57c00', dashes:true, arrows:'to', title:'lineage:parent→child' }); } }
+    for(const er of (model.externalReferences||[])) if(er.type==='bom'){
+      let url = er.url;
+      // Normalize url to not have double 'urn:'
+      if(url.startsWith('urn:cdx:urn:')) url = 'urn:cdx:' + url.slice(12);
+      let pid = bomToModel[url];
+      if(!pid){
+        // Try to match by stripping 'urn:cdx:' prefix if present
+        const urlNorm = url.startsWith('urn:cdx:') ? url.slice(8) : url;
+        for(const k of Object.keys(bomToModel)){
+          const kNorm = k.startsWith('urn:cdx:') ? k.slice(8) : k;
+          if(urlNorm === kNorm){ pid = bomToModel[k]; break; }
+        }
+      }
+      if(pid){
+        g.edges.push({ from:pid, to:modelId, color:'#f57c00', dashes:true, arrows:'to', title:'lineage:parent→child' });
+      }
+    }
   }
   // SPDX
   const nsToModel = {};
@@ -161,17 +202,46 @@ function makeHtml({g,details}){
 }
 
 let cache = { html: '' };
-function rebuild(){ const {g,details} = buildGraph(); cache.html = makeHtml({g,details}); }
+function rebuild(){
+  const t0 = Date.now();
+  try {
+    const {g,details} = buildGraph();
+    cache.html = makeHtml({g,details});
+    const elapsed = Date.now()-t0;
+    log('info','rebuilt graph', { nodes: Object.keys(g.nodes).length, edges: g.edges.length, ms: elapsed });
+  } catch (e) {
+    log('error','rebuild failed', { error: String(e) });
+  }
+}
 
 // Initial build if present
 rebuild();
 
 // File watchers
 const watcher = chokidar.watch([CX_DIR, SPDX_DIR], { ignoreInitial: true, depth: 1 });
-watcher.on('add', rebuild).on('change', rebuild).on('unlink', rebuild);
+watcher.on('add', (p)=>{ log('debug','file added', { file: relFromView(p) }); rebuild(); })
+  .on('change', (p)=>{ log('debug','file changed', { file: relFromView(p) }); rebuild(); })
+  .on('unlink', (p)=>{ log('debug','file removed', { file: relFromView(p) }); rebuild(); })
+  .on('error', (e)=>{ log('error','watch error', { error: String(e) }); });
 
 // Routes
+// Request logging middleware
+let REQ_ID = 0;
+app.use((req,res,next)=>{
+  const id = ++REQ_ID; const start = Date.now();
+  log('info','request', { id, method:req.method, path:req.originalUrl });
+  res.on('finish', ()=>{ log('info','response', { id, status: res.statusCode, ms: Date.now()-start }); });
+  next();
+});
+
 app.get('/', (req,res)=>{ if(!cache.html) rebuild(); res.set('Cache-Control','no-store'); return res.send(cache.html); });
 app.use('/output', express.static(OUTPUT_ROOT, { etag:false, lastModified:false, cacheControl:false, setHeaders:res=>{ res.set('Cache-Control','no-store'); } }));
 
-app.listen(PORT, ()=>{ console.log(`Viewer server running on http://localhost:${PORT}`); });
+// Error handler
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next)=>{ log('error','unhandled error', { error:String(err) }); res.status(500).send('Internal Server Error'); });
+
+process.on('uncaughtException', (e)=>{ log('error','uncaughtException', { error: String(e) }); });
+process.on('unhandledRejection', (e)=>{ log('error','unhandledRejection', { error: String(e) }); });
+
+app.listen(PORT, ()=>{ log('info', 'viewer server running', { url: `http://localhost:${PORT}`, port: Number(PORT) }); });

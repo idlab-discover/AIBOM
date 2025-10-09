@@ -57,3 +57,7 @@ cython_debug/
 
 # Output directory
 output/
+
+# Logs
+logs/
+*.log

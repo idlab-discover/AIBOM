@@ -8,10 +8,13 @@ services:
     user: "0:0"
     volumes:
       - ./output:/app/output
+      - ./logs:/app/logs
     environment:
       - EXTRACT_CONTEXT=${EXTRACT_CONTEXT:-}
-      - SCENARIO_YAML=${SCENARIO_YAML:-scenarios/demo-complex.yaml}
-    command: python main.py
+      - SCENARIO_YAML=${SCENARIO_YAML:-scenarios/realistic-mlops.yaml}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-plain}
+    command: /bin/bash -c "python main.py 2>&1 | tee -a /app/logs/mlmd-bom.log"
 
   bom-viewer:
     build:
@@ -24,6 +27,10 @@ services:
       - mlmd-bom
     volumes:
       - ./output:/app/output
+      - ./logs:/viewer/logs
     ports:
       - "8080:8080"
-    command: npm start
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-plain}
+    command: sh -c "npm start 2>&1 | tee -a /viewer/logs/bom-viewer.log"

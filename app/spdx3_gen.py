@@ -1,8 +1,13 @@
+# SPDX generation is deprecated for now. Do not use this module.
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import hashlib
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _iso_now() -> str:
@@ -109,7 +114,8 @@ def create_spdx3_document(
                 "type": "Relationship",
                 "id": f"rel-produced-{pidx}",
                 "from": f"doc:{pkg_id}",
-                "relationshipType": "hasOutput",  # model has output artifact from downstream stages
+                # model has output artifact from downstream stages
+                "relationshipType": "hasOutput",
                 "to": f"doc:{prod_id}",
                 "definedIn": "doc",
             }
@@ -142,18 +148,23 @@ def create_spdx3_document(
                 # "checksums": [{"algorithm": "sha256", "value": "..."}],
             }
         )
+        logger.debug("added SPDX lineage", extra={
+                     "doc": doc_name, "parent": parent_doc_name})
 
     # Note: We intentionally do not add an 'ancestorOf' relationship from the current
     # document to its child. Typical practice mirrors CycloneDX: only the newer document
     # links back to its parent (descendantOf). This avoids forward references and keeps
     # lineage unidirectional for simplicity.
 
-    return {
+    doc = {
         "spdxVersion": "SPDX-3.0",
         "documentNamespace": doc_ns,
         "elements": elements,
         "externalMaps": external_maps or None,
     }
+    logger.info("created SPDX3 document", extra={
+                "name": doc_name, "elements": len(elements)})
+    return doc
 
 
 def create_spdx3_document_multi(metadatas: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -241,8 +252,11 @@ def create_spdx3_document_multi(metadatas: List[Dict[str, Any]]) -> Dict[str, An
                 }
             )
 
-    return {
+    doc = {
         "spdxVersion": "SPDX-3.0",
         "documentNamespace": doc_ns,
         "elements": elements,
     }
+    logger.info("created SPDX3 multi document", extra={
+                "models": len(models_by_name), "elements": len(elements)})
+    return doc

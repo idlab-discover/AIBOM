@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Set
+import logging
 
 from ml_metadata.metadata_store import metadata_store  # type: ignore
 from ml_metadata.proto import metadata_store_pb2  # type: ignore
+
+logger = logging.getLogger(__name__)
 
 
 def extract_model_and_deps(
@@ -28,11 +31,13 @@ def extract_model_and_deps(
         # Filter by context
         ctxs = [c for c in store.get_contexts() if c.name == context_name]
         if not ctxs:
+            logger.error("no context found", extra={"context": context_name})
             raise RuntimeError(f"No context named {context_name}")
         ctx = ctxs[0]
         # Primary: artifacts explicitly attributed to the context
         artifacts_in_ctx = store.get_artifacts_by_context(ctx.id)
-        model_ids = [a.id for a in artifacts_in_ctx if get_type_name_by_id(a.type_id) == model_type]
+        model_ids = [a.id for a in artifacts_in_ctx if get_type_name_by_id(
+            a.type_id) == model_type]
         models = store.get_artifacts_by_id(model_ids) if model_ids else []
 
         # Fallback: some contexts (e.g., Pipeline) are associated to executions, not artifacts.
@@ -47,13 +52,19 @@ def extract_model_and_deps(
             if execs_in_ctx:
                 ex_ids = [e.id for e in execs_in_ctx]
                 evts = store.get_events_by_execution_ids(ex_ids)
-                out_artifact_ids = [e.artifact_id for e in evts if e.type == metadata_store_pb2.Event.OUTPUT]
-                out_artifacts = store.get_artifacts_by_id(out_artifact_ids) if out_artifact_ids else []
-                model_ids2 = [a.id for a in out_artifacts if get_type_name_by_id(a.type_id) == model_type]
-                models = store.get_artifacts_by_id(model_ids2) if model_ids2 else []
+                out_artifact_ids = [
+                    e.artifact_id for e in evts if e.type == metadata_store_pb2.Event.OUTPUT]
+                out_artifacts = store.get_artifacts_by_id(
+                    out_artifact_ids) if out_artifact_ids else []
+                model_ids2 = [a.id for a in out_artifacts if get_type_name_by_id(
+                    a.type_id) == model_type]
+                models = store.get_artifacts_by_id(
+                    model_ids2) if model_ids2 else []
     else:
         models = store.get_artifacts_by_type(model_type)
     if not models:
+        logger.error("no models in metadata store", extra={
+                     "model_type": model_type, "context": context_name})
         raise RuntimeError(f"No {model_type} artifacts in MLMD store")
 
     def val(prop_map, key):
@@ -83,13 +94,16 @@ def extract_model_and_deps(
     for model in models:
         events_for_model = store.get_events_by_artifact_ids([model.id])
         # Training executions that produced this model
-        exec_ids_out: Set[int] = {e.execution_id for e in events_for_model if e.type == metadata_store_pb2.Event.OUTPUT}
+        exec_ids_out: Set[int] = {
+            e.execution_id for e in events_for_model if e.type == metadata_store_pb2.Event.OUTPUT}
         # Downstream executions that consume this model (e.g., eval, packaging)
-        exec_ids_in: Set[int] = {e.execution_id for e in events_for_model if e.type == metadata_store_pb2.Event.INPUT}
+        exec_ids_in: Set[int] = {
+            e.execution_id for e in events_for_model if e.type == metadata_store_pb2.Event.INPUT}
         deps: List["metadata_store_pb2.Artifact"] = []
         for ex_id in exec_ids_out:
             evts = store.get_events_by_execution_ids([ex_id])
-            input_artifact_ids = [e.artifact_id for e in evts if e.type == metadata_store_pb2.Event.INPUT]
+            input_artifact_ids = [
+                e.artifact_id for e in evts if e.type == metadata_store_pb2.Event.INPUT]
             if input_artifact_ids:
                 arts = store.get_artifacts_by_id(input_artifact_ids)
                 # Filter out non-Library inputs if desired, but keep all for lineage
@@ -98,10 +112,19 @@ def extract_model_and_deps(
         # Include outputs of downstream stages that read this model
         for ex_id in exec_ids_in:
             evts = store.get_events_by_execution_ids([ex_id])
-            out_artifact_ids = [e.artifact_id for e in evts if e.type == metadata_store_pb2.Event.OUTPUT]
+            out_artifact_ids = [
+                e.artifact_id for e in evts if e.type == metadata_store_pb2.Event.OUTPUT]
             if out_artifact_ids:
                 arts = store.get_artifacts_by_id(out_artifact_ids)
                 produced.extend(arts)
+        logger.debug(
+            "collected model relations",
+            extra={
+                "model_id": getattr(model, "id", None),
+                "deps": len(deps),
+                "produced": len(produced),
+            },
+        )
         md = {
             "model_name": val(model.properties, "name") or "unknown",
             "version": val(model.properties, "version"),
@@ -132,13 +155,16 @@ def extract_model_and_deps(
             ],
         }
         results.append(md)
+    logger.info("extracted models", extra={
+                "count": len(results), "context": context_name})
     return results
 
 
 def get_models_by_property(store: "metadata_store.MetadataStore", key: str, value: str) -> List[Dict[str, Any]]:
     """Filter models by a typed property value and return their extracted metadata."""
     models = store.get_artifacts_by_type("Model")
-    filtered = [m for m in models if getattr(m.properties.get(key, None), "string_value", None) == value]
+    filtered = [m for m in models if getattr(
+        m.properties.get(key, None), "string_value", None) == value]
 
     def val(prop_map, key):
         v = prop_map.get(key)
@@ -158,11 +184,13 @@ def get_models_by_property(store: "metadata_store.MetadataStore", key: str, valu
     results = []
     for model in filtered:
         events_for_model = store.get_events_by_artifact_ids([model.id])
-        exec_ids = {e.execution_id for e in events_for_model if e.type == metadata_store_pb2.Event.OUTPUT}
+        exec_ids = {e.execution_id for e in events_for_model if e.type ==
+                    metadata_store_pb2.Event.OUTPUT}
         deps: List["metadata_store_pb2.Artifact"] = []
         for ex_id in exec_ids:
             evts = store.get_events_by_execution_ids([ex_id])
-            input_artifact_ids = [e.artifact_id for e in evts if e.type == metadata_store_pb2.Event.INPUT]
+            input_artifact_ids = [
+                e.artifact_id for e in evts if e.type == metadata_store_pb2.Event.INPUT]
             if input_artifact_ids:
                 arts = store.get_artifacts_by_id(input_artifact_ids)
                 deps.extend(arts)

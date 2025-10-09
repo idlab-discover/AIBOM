@@ -44,12 +44,33 @@ Environment variables:
   - Experiment contexts: `expA`, `expB`
   - Pipeline context: `demo-pipeline`
 
+Logging (optional):
+
+- Python generator (`app/`):
+  - `LOG_LEVEL`: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: INFO)
+  - `LOG_FORMAT`: `plain` (default) or `json`
+- Node viewer (`viewer/`):
+  - `LOG_LEVEL`: debug, info, warn, error (default: info)
+  - `LOG_FORMAT`: `plain` (default) or `json`
+
 Examples:
 
 Examples:
 - Default (loads the bundled demo scenario): run the compose command above and open http://localhost:8080
 - Export only one experiment from the demo scenario: set `EXTRACT_CONTEXT=expA` and re-run the generator service; the viewer will auto-refresh when new BOMs are written.
 - Use your own scenario: set `SCENARIO_YAML=app/scenarios/my-scenario.yaml` and re-run the generator service.
+
+Enable verbose logging:
+
+```bash
+LOG_LEVEL=DEBUG docker compose up --build
+```
+
+Emit JSON logs for both services:
+
+```bash
+LOG_FORMAT=json LOG_LEVEL=DEBUG docker compose up --build
+```
 
 ### Visualize the BOMs (Live viewer)
 

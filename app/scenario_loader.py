@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict, List
+import logging
 
 import yaml  # type: ignore
 from ml_metadata.proto import metadata_store_pb2  # type: ignore
@@ -11,6 +12,7 @@ from mlmd_support import (
     upsert_execution_type,
     upsert_context_type,
 )
+logger = logging.getLogger(__name__)
 
 
 _PROP_TYPES = {
@@ -71,6 +73,7 @@ def populate_mlmd_from_scenario(store, scenario_path: str | Path) -> Dict[str, A
     - associations: [ {context: ctxKey, execution: exeKey} ]
     """
     path = Path(scenario_path)
+    logger.info("loading scenario", extra={"path": str(path)})
     with open(path, "r", encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
 
@@ -80,17 +83,22 @@ def populate_mlmd_from_scenario(store, scenario_path: str | Path) -> Dict[str, A
     ctx_type_props: Dict[str, Dict[str, int]] = {}
 
     for tname, spec in (data.get("types", {}).get("artifact", {}) or {}).items():
-        props = {k: _PROP_TYPES.get(v, metadata_store_pb2.STRING) for k, v in (spec.get("properties") or {}).items()}
+        props = {k: _PROP_TYPES.get(v, metadata_store_pb2.STRING)
+                 for k, v in (spec.get("properties") or {}).items()}
         art_type_props[tname] = props
         upsert_artifact_type(store, tname, properties=props)
     for tname, spec in (data.get("types", {}).get("execution", {}) or {}).items():
-        props = {k: _PROP_TYPES.get(v, metadata_store_pb2.STRING) for k, v in (spec.get("properties") or {}).items()}
+        props = {k: _PROP_TYPES.get(v, metadata_store_pb2.STRING)
+                 for k, v in (spec.get("properties") or {}).items()}
         exe_type_props[tname] = props
         upsert_execution_type(store, tname, properties=props)
     for tname, spec in (data.get("types", {}).get("context", {}) or {}).items():
-        props = {k: _PROP_TYPES.get(v, metadata_store_pb2.STRING) for k, v in (spec.get("properties") or {}).items()}
+        props = {k: _PROP_TYPES.get(v, metadata_store_pb2.STRING)
+                 for k, v in (spec.get("properties") or {}).items()}
         ctx_type_props[tname] = props
         upsert_context_type(store, tname, properties=props)
+    logger.debug("types upserted", extra={"artifact_types": len(
+        art_type_props), "execution_types": len(exe_type_props), "context_types": len(ctx_type_props)})
 
     # Create contexts
     ctx_index: Dict[str, metadata_store_pb2.Context] = {}
@@ -101,10 +109,12 @@ def populate_mlmd_from_scenario(store, scenario_path: str | Path) -> Dict[str, A
             # Resolve type id
             ctx.type_id = store.get_context_type(item.get("type")).id
             ctx.name = item.get("name") or key
-            _set_props_typed(ctx.properties, item.get("properties") or {}, ctx_type_props.get(item.get("type"), {}))
+            _set_props_typed(ctx.properties, item.get("properties") or {
+            }, ctx_type_props.get(item.get("type"), {}))
             [cid] = store.put_contexts([ctx])
             ctx.id = cid
             ctx_index[key] = ctx
+    logger.info("contexts created", extra={"count": len(ctx_index)})
 
     # Create artifacts
     art_index: Dict[str, metadata_store_pb2.Artifact] = {}
@@ -115,13 +125,15 @@ def populate_mlmd_from_scenario(store, scenario_path: str | Path) -> Dict[str, A
             a = metadata_store_pb2.Artifact()
             a.type_id = store.get_artifact_type(item.get("type")).id
             a.uri = item.get("uri", "")
-            _set_props_typed(a.properties, item.get("properties") or {}, art_type_props.get(item.get("type"), {}))
+            _set_props_typed(a.properties, item.get("properties") or {
+            }, art_type_props.get(item.get("type"), {}))
             to_put.append(a)
             keys.append(key)
         ids = store.put_artifacts(to_put)
         for a, k, i in zip(to_put, keys, ids):
             a.id = i
             art_index[k] = a
+    logger.info("artifacts created", extra={"count": len(art_index)})
 
     # Create executions
     exe_index: Dict[str, metadata_store_pb2.Execution] = {}
@@ -131,13 +143,15 @@ def populate_mlmd_from_scenario(store, scenario_path: str | Path) -> Dict[str, A
         for key, item in data["executions"].items():
             e = metadata_store_pb2.Execution()
             e.type_id = store.get_execution_type(item.get("type")).id
-            _set_props_typed(e.properties, item.get("properties") or {}, exe_type_props.get(item.get("type"), {}))
+            _set_props_typed(e.properties, item.get("properties") or {
+            }, exe_type_props.get(item.get("type"), {}))
             to_put_e.append(e)
             keys_e.append(key)
         ids_e = store.put_executions(to_put_e)
         for e, k, i in zip(to_put_e, keys_e, ids_e):
             e.id = i
             exe_index[k] = e
+    logger.info("executions created", extra={"count": len(exe_index)})
 
     # Attributions and associations
     atts: List[metadata_store_pb2.Attribution] = []
@@ -154,6 +168,8 @@ def populate_mlmd_from_scenario(store, scenario_path: str | Path) -> Dict[str, A
         assocs.append(asn)
     if atts or assocs:
         store.put_attributions_and_associations(atts, assocs)
+    logger.debug("linked attributions/associations",
+                 extra={"attributions": len(atts), "associations": len(assocs)})
 
     # Events (execution IO)
     evts: List[metadata_store_pb2.Event] = []
@@ -161,13 +177,15 @@ def populate_mlmd_from_scenario(store, scenario_path: str | Path) -> Dict[str, A
         e = metadata_store_pb2.Event()
         e.execution_id = exe_index[ev["execution"]].id
         e.artifact_id = art_index[ev["artifact"]].id
-        e.type = metadata_store_pb2.Event.OUTPUT if ev.get("type", "OUTPUT").upper() == "OUTPUT" else metadata_store_pb2.Event.INPUT
+        e.type = metadata_store_pb2.Event.OUTPUT if ev.get(
+            "type", "OUTPUT").upper() == "OUTPUT" else metadata_store_pb2.Event.INPUT
         evts.append(e)
     if evts:
         store.put_events(evts)
+    logger.info("events created", extra={"count": len(evts)})
 
     # Link per-entity contexts if declared inline (optional convenience)
-    from ml_metadata.proto import metadata_store_pb2 as pb2
+    from ml_metadata.proto import metadata_store_pb2 as pb2  # type: ignore
     extra_atts: List[pb2.Attribution] = []
     extra_assocs: List[pb2.Association] = []
     for key, item in (data.get("artifacts") or {}).items():
@@ -184,9 +202,15 @@ def populate_mlmd_from_scenario(store, scenario_path: str | Path) -> Dict[str, A
             extra_assocs.append(asn)
     if extra_atts or extra_assocs:
         store.put_attributions_and_associations(extra_atts, extra_assocs)
+    if extra_atts or extra_assocs:
+        logger.debug("extra links added", extra={"extra_attributions": len(
+            extra_atts), "extra_associations": len(extra_assocs)})
 
-    return {
+    result = {
         "contexts": ctx_index,
         "artifacts": art_index,
         "executions": exe_index,
     }
+    logger.info("scenario loaded", extra={"contexts": len(
+        ctx_index), "artifacts": len(art_index), "executions": len(exe_index)})
+    return result

@@ -1,256 +1,260 @@
+
 #!/usr/bin/env python3
 from __future__ import annotations
 
 """
-PoC: Populate MLMD from YAML scenarios and export CycloneDX and SPDX BOMs.
-- Creates an in-memory MLMD store from a scenario file
-- Writes outputs into ./output
+MLMD to CycloneDX BOM generator (SPDX deprecated).
+Populates an in-memory MLMD store from a scenario file and writes CycloneDX outputs to ./output.
 """
 
 import json
 import os
 import sys
+import logging
+import time
 from pathlib import Path
-from typing import List
+from typing import List, Dict, Any
 
 from mlmd_support import connect_mlmd
 from scenario_loader import populate_mlmd_from_scenario
 from extraction import extract_model_and_deps
-from cyclonedx_gen import create_cyclonedx_bom, write_cyclonedx_files
-from spdx3_gen import create_spdx3_document
+from cyclonedx_gen import (
+    create_model_bom,
+    add_model_lineage_relation,
+    write_cyclonedx_files,
+)
 
 
-def write_metadata_snapshot(md, path: str) -> None:
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
+logger = logging.getLogger(__name__)
+
+
+def setup_logging() -> None:
+    """Configure root logging from environment variables.
+
+    LOG_LEVEL: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: INFO)
+    LOG_FORMAT: 'plain' (default) or 'json' (lightweight JSON)
+    """
+    level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    fmt_choice = os.environ.get("LOG_FORMAT", "plain").lower()
+
+    handler = logging.StreamHandler()
+    if fmt_choice == "json":
+        class JsonFormatter(logging.Formatter):
+            # type: ignore[override]
+            def format(self, record: logging.LogRecord) -> str:
+                data = {
+                    "ts": int(record.created * 1000),
+                    "level": record.levelname,
+                    "logger": record.name,
+                    "msg": record.getMessage(),
+                }
+                # Attach any "extra" fields added to the record
+                std = {
+                    'name', 'msg', 'args', 'levelname', 'levelno', 'pathname', 'filename', 'module', 'exc_info',
+                    'exc_text', 'stack_info', 'lineno', 'funcName', 'created', 'msecs', 'relativeCreated', 'thread',
+                    'threadName', 'processName', 'process', 'asctime'
+                }
+                for k, v in record.__dict__.items():
+                    if k not in std and not k.startswith('_'):
+                        try:
+                            json.dumps({k: v})  # test serializable
+                            data[k] = v
+                        except Exception:
+                            data[k] = str(v)
+                if record.exc_info:
+                    data["exc_info"] = self.formatException(record.exc_info)
+                return json.dumps(data)
+        handler.setFormatter(JsonFormatter())
+    else:
+        formatter = logging.Formatter(
+            fmt="%(asctime)s %(levelname)s %(name)s: %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S",
+        )
+        handler.setFormatter(formatter)
+
+    root = logging.getLogger()
+    root.setLevel(level)
+    # Avoid duplicate handlers if called twice
+    if not any(isinstance(h, logging.StreamHandler) for h in root.handlers):
+        root.addHandler(handler)
+    else:
+        # Replace existing handlers' formatter/level
+        for h in root.handlers:
+            if isinstance(h, logging.StreamHandler):
+                h.setLevel(level)
+                h.setFormatter(handler.formatter)
+
+
+def safe_filename(s: str) -> str:
+    return "".join(c if c.isalnum() or c in ("-", "_", ".") else "-" for c in s)
+
+
+def version_key(v: str) -> tuple:
+    parts = []
+    for p in (v or "").split("."):
+        try:
+            parts.append(int(p))
+        except ValueError:
+            parts.append(p)
+    return tuple(parts)
+
+
+def write_json(data, path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(md, f, indent=2)
+        json.dump(data, f, indent=2)
+    logger.debug("wrote json", extra={"path": str(path)})
 
 
-def main(argv: List[str]) -> int:
-
-    # Output dir (fixed, no environment override)
-    out_dir = Path("output").resolve()
-    out_dir.mkdir(parents=True, exist_ok=True)
-    cdx_dir = out_dir / "cyclonedx"
-    spdx_dir = out_dir / "spdx"
-    cdx_dir.mkdir(parents=True, exist_ok=True)
-    spdx_dir.mkdir(parents=True, exist_ok=True)
-
-    # Setup MLMD, populate from scenario, extract
-    store = connect_mlmd()
-    scenario = os.environ.get("SCENARIO_YAML") or "scenarios/demo-complex.yaml"
-    populate_mlmd_from_scenario(store, scenario)
-    # Optional filtering by context via env var
-    context_name = os.environ.get("EXTRACT_CONTEXT")
-    mds = extract_model_and_deps(store, context_name=context_name)
-    md = mds[0] if mds else {}
-
-    # Write outputs
-    write_metadata_snapshot(md, str(out_dir / "extracted_mlmd.json"))
-    write_metadata_snapshot(mds, str(out_dir / "extracted_mlmd_multi.json"))
-
-    # Generate per-model BOMs only. Combined BOMs are disabled.
-    do_combined = False
-
-    # Helper for safe filenames
-    def safe(s: str) -> str:
-        return "".join(c if c.isalnum() or c in ("-", "_", ".") else "-" for c in s)
-
-    # Sort models by semantic-ish version to establish lineage (fallback to lexical)
-    def version_key(v: str) -> tuple:
-        parts = []
-        for p in (v or "").split("."):
-            try:
-                parts.append(int(p))
-            except ValueError:
-                parts.append(p)
-        return tuple(parts)
-
-    # Group by model name for lineage chains
-    by_name = {}
-    for item in mds:
-        by_name.setdefault(item.get("model_name", "model"), []).append(item)
-
-    # Clean: remove previous BOM outputs to avoid stale content
-    # Remove any previous CycloneDX files in new subfolder and legacy root
+def clean_previous_outputs(cdx_dir: Path, out_dir: Path):
+    removed = 0
     for p in cdx_dir.glob("*.cyclonedx.*"):
         try:
             p.unlink()
-        except Exception:
-            pass
+            removed += 1
+        except Exception as e:
+            logger.debug("failed to remove file", extra={
+                         "path": str(p), "error": str(e)})
     for p in out_dir.glob("*.cyclonedx.*"):
         try:
             p.unlink()
-        except Exception:
-            pass
-    # Remove any previous SPDX files in new subfolder and legacy root
-    for p in spdx_dir.glob("*.spdx*.json"):
+            removed += 1
+        except Exception as e:
+            logger.debug("failed to remove file", extra={
+                         "path": str(p), "error": str(e)})
+    if removed:
+        logger.info("cleaned previous cyclonedx outputs",
+                    extra={"count": removed})
+
+
+def group_models_by_name(mds: List[Dict[str, Any]]):
+    by_name = {}
+    for item in mds:
+        by_name.setdefault(item.get("model_name", "model"), []).append(item)
+    return by_name
+
+
+def get_parent_bom_info(cdx_dir: Path, parent: Dict[str, Any], idx: int) -> tuple:
+    safe = safe_filename
+    prev_base = f"{safe(parent.get('model_name', 'model'))}-{safe(parent.get('version', str(idx-1)))}"
+    parent_cx_url = str((cdx_dir / f"{prev_base}.cyclonedx.json").as_uri())
+    prev_cx_path = cdx_dir / f"{prev_base}.cyclonedx.json"
+    parent_bom_serial = None
+    parent_bom_version = None
+    parent_model_bom_ref = None
+    if prev_cx_path.exists():
         try:
-            p.unlink()
+            with open(prev_cx_path, "r", encoding="utf-8") as fh:
+                prev_bom = json.load(fh)
+            parent_bom_serial = prev_bom.get("serialNumber")
+            parent_bom_version = prev_bom.get("version", 1)
+            meta = prev_bom.get("metadata", {})
+            comp = meta.get("component") or {}
+            ref = comp.get("bom-ref")
+            if not ref:
+                for c in prev_bom.get("components", []):
+                    if c.get("type") == "application":
+                        ref = c.get("bom-ref")
+                        break
+            parent_model_bom_ref = ref
         except Exception:
-            pass
-    for p in out_dir.glob("*.spdx*.json"):
-        try:
-            p.unlink()
-        except Exception:
-            pass
-
-    # Emit per-model BOMs
-
-    # Emit per-model BOMs for all versions (if no parent exists, emit without lineage)
-    for name, items in by_name.items():
-        items.sort(key=lambda x: version_key(x.get("version", "")))
-        # Build a small index for child/parent lookups
-        for idx, item in enumerate(items):
-            model_name = item.get("model_name", "model")
-            version = item.get("version", f"{idx}")
-            base = f"{safe(model_name)}-{safe(version)}"
-
-            parent = items[idx - 1] if idx > 0 else None
-            child = items[idx + 1] if idx + 1 < len(items) else None
-
-            # Gather BOM-Link identifiers from parent if available
             parent_bom_serial = None
             parent_bom_version = None
             parent_model_bom_ref = None
-            parent_cx_url = None
-            if parent is not None:
-                prev_base = f"{safe(parent.get('model_name','model'))}-{safe(parent.get('version', str(idx-1)))}"
-                parent_cx_url = str((cdx_dir / f"{prev_base}.cyclonedx.json").as_uri())
-                prev_cx_path = cdx_dir / f"{prev_base}.cyclonedx.json"
-                if prev_cx_path.exists():
-                    try:
-                        with open(prev_cx_path, "r", encoding="utf-8") as fh:
-                            prev_bom = json.load(fh)
-                        parent_bom_serial = prev_bom.get("serialNumber")
-                        parent_bom_version = prev_bom.get("version", 1)
-                        ref = None
-                        meta = prev_bom.get("metadata", {})
-                        comp = meta.get("component") or {}
-                        ref = comp.get("bom-ref")
-                        if not ref:
-                            for c in prev_bom.get("components", []):
-                                if c.get("type") == "application":
-                                    ref = c.get("bom-ref")
-                                    break
-                        parent_model_bom_ref = ref
-                    except Exception:
-                        parent_bom_serial = None
-                        parent_bom_version = None
-                        parent_model_bom_ref = None
+    return parent_cx_url, parent_bom_serial, parent_bom_version, parent_model_bom_ref
 
-            # CycloneDX per-model (JSON + XML)
-            bom = create_cyclonedx_bom(
-                item,
-                parent_bom_url=parent_cx_url,
-                parent_bom_serial=parent_bom_serial,
-                parent_bom_version=parent_bom_version if isinstance(parent_bom_version, int) else None,
-                parent_model_bom_ref=parent_model_bom_ref,
-            )
+
+def emit_per_model_boms(by_name: Dict[str, List[Dict[str, Any]]], cdx_dir: Path):
+    logger.debug("emit_per_model_boms", extra={"groups": len(by_name)})
+    for name, items in by_name.items():
+        logger.info("processing model group", extra={
+                    "model": name, "versions": len(items)})
+        items.sort(key=lambda x: version_key(x.get("version", "")))
+        for idx, item in enumerate(items):
+            model_name = item.get("model_name", "model")
+            version = item.get("version", f"{idx}")
+            base = f"{safe_filename(model_name)}-{safe_filename(version)}"
+            parent = items[idx - 1] if idx > 0 else None
+            parent_cx_url = None
+            parent_bom_serial = None
+            parent_bom_version = None
+            parent_model_bom_ref = None
+            logger.debug("model version", extra={
+                         "model": model_name, "version": version, "uri": item.get("uri")})
+            if parent is not None:
+                parent_cx_url, parent_bom_serial, parent_bom_version, parent_model_bom_ref = get_parent_bom_info(
+                    cdx_dir, parent, idx)
+                logger.debug(
+                    "parent bom info",
+                    extra={
+                        "parent_model": parent.get("model_name"),
+                        "parent_version": parent.get("version"),
+                        "cx_url": parent_cx_url,
+                        "serial": parent_bom_serial,
+                        "bom_version": parent_bom_version,
+                        "parent_ref": parent_model_bom_ref,
+                    },
+                )
+            # Create model BOM
+            bom = create_model_bom(item)
+            if parent_cx_url or (parent_bom_serial and parent_model_bom_ref):
+                logger.debug("adding model lineage relation",
+                             extra={"uri": item.get("uri")})
+                add_model_lineage_relation(
+                    bom,
+                    model_bom_ref=item.get("uri"),
+                    parent_bom_url=parent_cx_url,
+                    parent_bom_serial=parent_bom_serial,
+                    parent_bom_version=parent_bom_version if isinstance(
+                        parent_bom_version, int) else None,
+                    parent_model_bom_ref=parent_model_bom_ref,
+                )
             write_cyclonedx_files(
                 bom,
                 out_json=str(cdx_dir / f"{base}.cyclonedx.json"),
-                out_xml=str(cdx_dir / f"{base}.cyclonedx.xml"),
             )
-            # Post-process CycloneDX JSON to ensure BOM-Link URN to parent and bump to 1.6
-            cdx_path = cdx_dir / f"{base}.cyclonedx.json"
-            try:
-                with open(cdx_path, "r", encoding="utf-8") as fh:
-                    cdx = json.load(fh)
-                if parent_bom_serial and parent_model_bom_ref:
-                    bom_link = f"urn:cdx:{parent_bom_serial}/{parent_bom_version or 1}#{parent_model_bom_ref}"
-                    meta = cdx.setdefault("metadata", {})
-                    comp = meta.setdefault("component", {})
-                    extrefs = comp.setdefault("externalReferences", [])
-                    if not any(er.get("type") == "bom" and er.get("url") == bom_link for er in extrefs):
-                        extrefs.append({"type": "bom", "url": bom_link, "comment": "Parent/ancestor model via BOM-Link"})
-                    model_bom_ref = comp.get("bom-ref")
-                    if model_bom_ref:
-                        for c in cdx.get("components", []):
-                            if c.get("bom-ref") == model_bom_ref:
-                                c.setdefault("externalReferences", [])
-                                if not any(er.get("type") == "bom" and er.get("url") == bom_link for er in c["externalReferences"]):
-                                    c["externalReferences"].append({"type": "bom", "url": bom_link, "comment": "Parent/ancestor model via BOM-Link"})
-                                break
-                cdx["specVersion"] = "1.6"
-                cdx["$schema"] = "http://cyclonedx.org/schema/bom-1.6.schema.json"
-                with open(cdx_path, "w", encoding="utf-8") as fh:
-                    json.dump(cdx, fh, indent=4)
-            except Exception:
-                pass
 
-            # SPDX 3.0 per-model: include lineage edge back to parent only (descendantOf)
-            spdx3_obj = create_spdx3_document(
-                item,
-                document_name=f"{model_name}-{version}",
-                document_version=1,
-                parent_doc_name=(f"{parent.get('model_name','model')}-{parent.get('version','')}" if parent else None),
-                parent_doc_version=1,
-                # no child pointers to avoid forward refs
-                child_doc_name=None,
-                child_doc_version=1,
-            )
-            with open(spdx_dir / f"{base}.spdx3.json", "w", encoding="utf-8") as fh:
-                json.dump(spdx3_obj, fh, indent=2)
 
-    # Post-pass: ensure all per-model CycloneDX have BOM-Link URN to their immediate parent and specVersion 1.6
-    for name, items in by_name.items():
-        items.sort(key=lambda x: version_key(x.get("version", "")))
-        for idx in range(1, len(items)):
-            cur = items[idx]
-            prev = items[idx - 1]
-            cur_base = f"{safe(cur.get('model_name','model'))}-{safe(cur.get('version', str(idx)))}"
-            prev_base = f"{safe(prev.get('model_name','model'))}-{safe(prev.get('version', str(idx-1)))}"
-            cur_path = cdx_dir / f"{cur_base}.cyclonedx.json"
-            prev_path = cdx_dir / f"{prev_base}.cyclonedx.json"
-            try:
-                with open(prev_path, "r", encoding="utf-8") as fh:
-                    prev_bom = json.load(fh)
-                parent_serial = prev_bom.get("serialNumber")
-                parent_ver = prev_bom.get("version", 1)
-                # Try to get parent model bom-ref
-                parent_ref = None
-                meta = prev_bom.get("metadata", {})
-                comp = meta.get("component") or {}
-                parent_ref = comp.get("bom-ref")
-                if not parent_ref:
-                    for c in prev_bom.get("components", []):
-                        if c.get("type") == "application":
-                            parent_ref = c.get("bom-ref")
-                            break
-                if not (parent_serial and parent_ref):
-                    continue
-                with open(cur_path, "r", encoding="utf-8") as fh:
-                    cur_bom = json.load(fh)
-                bom_link = f"urn:cdx:{parent_serial}/{parent_ver}#{parent_ref}"
-                # Ensure metadata.component exists
-                meta2 = cur_bom.setdefault("metadata", {})
-                comp2 = meta2.setdefault("component", {})
-                # Add externalReferences at both places
-                for target in (comp2,):
-                    ext = target.setdefault("externalReferences", [])
-                    if not any(er.get("type") == "bom" and er.get("url") == bom_link for er in ext):
-                        ext.append({"type": "bom", "url": bom_link, "comment": "Parent/ancestor model via BOM-Link"})
-                # Also add to the actual component entry with matching bom-ref
-                model_ref = comp2.get("bom-ref")
-                if model_ref:
-                    for c in cur_bom.get("components", []):
-                        if c.get("bom-ref") == model_ref:
-                            ext = c.setdefault("externalReferences", [])
-                            if not any(er.get("type") == "bom" and er.get("url") == bom_link for er in ext):
-                                ext.append({"type": "bom", "url": bom_link, "comment": "Parent/ancestor model via BOM-Link"})
-                            break
-                # Bump to 1.6 schema/spec
-                cur_bom["specVersion"] = "1.6"
-                cur_bom["$schema"] = "http://cyclonedx.org/schema/bom-1.6.schema.json"
-                with open(cur_path, "w", encoding="utf-8") as fh:
-                    json.dump(cur_bom, fh, indent=4)
-            except Exception:
-                continue
+def main(argv: List[str]) -> int:
+    setup_logging()
+    t0 = time.time()
+    out_dir = Path("output").resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cdx_dir = out_dir / "cyclonedx"
+    cdx_dir.mkdir(parents=True, exist_ok=True)
 
-    # Combined BOMs disabled per request
+    # Connect and populate MLMD
+    logger.info("connecting to MLMD store")
+    store = connect_mlmd()
+    scenario = os.environ.get(
+        "SCENARIO_YAML", "app/scenarios/realistic-mlops.yaml")
+    logger.info("populating MLMD from scenario", extra={"scenario": scenario})
+    populate_mlmd_from_scenario(store, scenario)
 
-    print("Generated in", out_dir)
+    # Extract model metadata
+    context_name = os.environ.get("EXTRACT_CONTEXT")
+    logger.info("extracting model metadata", extra={"context": context_name})
+    mds = extract_model_and_deps(store, context_name=context_name)
+    md = mds[0] if mds else {}
+
+    # Write extracted metadata
+    write_json(md, out_dir / "extracted_mlmd.json")
+    write_json(mds, out_dir / "extracted_mlmd_multi.json")
+
+    # Clean previous CycloneDX outputs
+    clean_previous_outputs(cdx_dir, out_dir)
+
+    # Group models by name
+    by_name = group_models_by_name(mds)
+    logger.info("grouped models", extra={"groups": len(by_name)})
+
+    # Emit per-model CycloneDX BOMs
+    emit_per_model_boms(by_name, cdx_dir)
+
+    elapsed = time.time() - t0
+    logger.info("generated CycloneDX BOMs", extra={
+                "dir": str(cdx_dir), "elapsed_sec": round(elapsed, 3)})
     return 0
 
 
