@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: mlmd-bom-app
     working_dir: /app
-    user: "0:0"
+    user: "${UID}:${GID}"
     volumes:
       - ./output:/app/output
       - ./logs:/app/logs
@@ -22,7 +22,7 @@ services:
       dockerfile: Dockerfile
     container_name: mlmd-bom-viewer
     working_dir: /viewer
-    user: "0:0"
+    user: "${UID}:${GID}"
     depends_on:
       - mlmd-bom
     volumes:

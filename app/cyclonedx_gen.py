@@ -273,19 +273,23 @@ def add_dataset_lineage_relation(bom: Bom, dataset_bom_ref: str, parent_bom_url:
 
 def write_cyclonedx_files(
     bom: Bom,
-    out_json: str = "bom.cyclonedx.json",
-    out_xml: Optional[str] = "bom.cyclonedx.xml"
+    out_json: Optional[str] = None,
+    out_xml: Optional[str] = None
 ) -> None:
-    # Prefer 1.6 when supported
+    """
+    Write CycloneDX BOM to JSON and/or XML if the corresponding path is provided.
+    If out_json is given, write JSON. If out_xml is given, write XML. No output is written by default.
+    """
     try:
         schema = CxSchemaVersion.V1_6  # prefer 1.6 when supported
     except Exception:  # pragma: no cover
         schema = CxSchemaVersion.V1_5
-    outter_json = make_outputter(
-        bom=bom, output_format=CxOutputFormat.JSON, schema_version=schema)
-    with open(out_json, "w", encoding="utf-8") as f:
-        f.write(outter_json.output_as_string(indent=2))
-    logger.info("wrote CycloneDX JSON", extra={"path": out_json})
+    if out_json:
+        outter_json = make_outputter(
+            bom=bom, output_format=CxOutputFormat.JSON, schema_version=schema)
+        with open(out_json, "w", encoding="utf-8") as f:
+            f.write(outter_json.output_as_string(indent=2))
+        logger.info("wrote CycloneDX JSON", extra={"path": out_json})
     if out_xml:
         outter_xml = make_outputter(
             bom=bom, output_format=CxOutputFormat.XML, schema_version=schema)
