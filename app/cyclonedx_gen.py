@@ -95,73 +95,146 @@ def create_model_bom(metadata: Dict[str, Any]) -> Bom:
     return bom
 
 
-def add_model_lineage_relation(bom: Bom, model_bom_ref: str, parent_bom_url: Optional[str] = None, parent_bom_serial: Optional[str] = None, parent_bom_version: Optional[int] = None, parent_model_bom_ref: Optional[str] = None):
-    """Add a parent/child model relation to a model BOM."""
-    from cyclonedx.model.bom_ref import BomRef  # type: ignore
-    # Convert model_bom_ref to BomRef if needed
-    if not isinstance(model_bom_ref, BomRef):
+def add_model_lineage_relation(parent_bom: Bom, child_bom: Bom) -> None:
+    """Add bidirectional lineage references between parent and child model BOMs.
+
+    This function finds the model (application) component in each BOM and:
+    - Adds an externalReference of type BOM on the child pointing to the parent's bom-ref
+    - Adds an externalReference of type BOM on the parent pointing to the child's bom-ref
+    - Adds properties to both components capturing the other side's bom-ref for tool consumption
+    Note: URLs are stored as URNs with the target bom-ref to avoid needing file paths or serials.
+    """
+    def find_model_component(b: Bom):
+        comp = None
         try:
-            model_bom_ref_obj = BomRef(model_bom_ref)
+            # Prefer metadata.component if set
+            comp = getattr(b.metadata, 'component', None)
         except Exception:
-            model_bom_ref_obj = model_bom_ref
-    else:
-        model_bom_ref_obj = model_bom_ref
+            comp = None
+        if comp and getattr(comp, 'type', None) == ComponentType.APPLICATION:
+            return comp
+        for c in b.components:
+            if getattr(c, 'type', None) == ComponentType.APPLICATION:
+                return c
+        return None
 
-    model_component = None
-    for c in bom.components:
-        if getattr(c, 'bom_ref', None) == model_bom_ref_obj:
-            logger.debug("found model component for lineage",
-                         extra={"bom_ref": str(model_bom_ref)})
-            model_component = c
-            break
-
-    if parent_bom_serial and parent_model_bom_ref:
-        version_str = str(parent_bom_version or 1)
-        # Avoid double 'urn:'
-        serial = parent_bom_serial
-        if serial.startswith('urn:'):
-            serial = serial[len('urn:'):]
-        bom_link = f"urn:cdx:{serial}/{version_str}#{parent_model_bom_ref}"
-        url_val = XsUri(bom_link) if XsUri else bom_link
-        model_component.external_references.add(
-            ExternalReference(
-                type=ExternalReferenceType.BOM,
-                url=url_val,
-                comment="Parent/ancestor model via BOM-Link"
-            )
-        )
-
-    elif parent_bom_url:
-        url_val = XsUri(parent_bom_url) if XsUri else parent_bom_url
-        model_component.external_references.add(
-            ExternalReference(
-                type=ExternalReferenceType.BOM,
-                url=url_val,
-                comment="Parent/ancestor model BOM"
-            )
-        )
-    logger.debug("added lineage reference", extra={"has_serial": bool(
-        parent_bom_serial), "has_url": bool(parent_bom_url)})
-
-
-def add_model_uses_dataset_relation(bom: Bom, model_bom_ref: str, dataset_bom_url: str):
-    """Add a relation from a model to a dataset BOM (uses dataset)."""
-    model_component = None
-    for c in bom.components:
-        if getattr(c, 'bom_ref', None) == model_bom_ref:
-            model_component = c
-            break
-    if not model_component:
+    parent_comp = find_model_component(parent_bom)
+    child_comp = find_model_component(child_bom)
+    if not parent_comp or not child_comp:
+        logger.warning("could not locate model components for lineage", extra={
+                       "has_parent": bool(parent_comp), "has_child": bool(child_comp)})
         return
+
+    parent_ref = getattr(parent_comp, 'bom_ref', None)
+    child_ref = getattr(child_comp, 'bom_ref', None)
+    if not parent_ref or not child_ref:
+        logger.warning("missing bom-ref for lineage",
+                       extra={"parent_ref": bool(parent_ref), "child_ref": bool(child_ref)})
+        return
+
     try:
-        url_val = XsUri(dataset_bom_url) if XsUri else dataset_bom_url
-        model_component.external_references.add(
+        # Use a stable URN with bom-ref, viewers can resolve as needed
+        parent_urn = XsUri(
+            f"urn:mlmd-bom-ref:{parent_ref}") if XsUri else f"urn:mlmd-bom-ref:{parent_ref}"
+        child_urn = XsUri(
+            f"urn:mlmd-bom-ref:{child_ref}") if XsUri else f"urn:mlmd-bom-ref:{child_ref}"
+        child_comp.external_references.add(
             ExternalReference(
-                type=ExternalReferenceType.DATA,
-                url=url_val,
-                comment="Uses dataset BOM"
+                type=ExternalReferenceType.BOM,
+                url=parent_urn,
+                comment="Lineage: parent model BOM-ref",
             )
         )
+        parent_comp.external_references.add(
+            ExternalReference(
+                type=ExternalReferenceType.BOM,
+                url=child_urn,
+                comment="Lineage: child model BOM-ref",
+            )
+        )
+    except Exception:
+        pass
+
+    logger.debug("added bidirectional lineage", extra={
+                 "parent_ref": str(parent_ref), "child_ref": str(child_ref)})
+
+
+def add_model_dataset_relation(model_bom: Bom, dataset_bom: Bom) -> None:
+    """
+    Add relations between a model BOM and a dataset BOM (uses dataset). (both directions)
+    - Adds externalReferences of type BOM on both components
+    - Adds lightweight properties to ease downstream tooling
+    """
+    def find_model_component(b: Bom):
+        comp = None
+        try:
+            comp = getattr(b.metadata, 'component', None)
+        except Exception:
+            comp = None
+        if comp and getattr(comp, 'type', None) == ComponentType.APPLICATION:
+            return comp
+        for c in b.components:
+            if getattr(c, 'type', None) == ComponentType.APPLICATION:
+                return c
+        return None
+
+    def find_dataset_component(b: Bom):
+        data_type = getattr(ComponentType, 'DATA', None)
+        comp = None
+        try:
+            comp = getattr(b.metadata, 'component', None)
+        except Exception:
+            comp = None
+        if comp and getattr(comp, 'type', None) in (data_type, ComponentType.FILE):
+            return comp
+        for c in b.components:
+            if getattr(c, 'type', None) in (data_type, ComponentType.FILE):
+                return c
+        return None
+
+    model_comp = find_model_component(model_bom)
+    dataset_comp = find_dataset_component(dataset_bom)
+    if not model_comp or not dataset_comp:
+        logger.warning("could not locate model/dataset components for relation", extra={
+                       "has_model": bool(model_comp), "has_dataset": bool(dataset_comp)})
+        return
+
+    model_ref = getattr(model_comp, 'bom_ref', None)
+    dataset_ref = getattr(dataset_comp, 'bom_ref', None)
+    if not model_ref or not dataset_ref:
+        logger.warning("missing bom-ref for model/dataset relation", extra={
+                       "model_ref": bool(model_ref), "dataset_ref": bool(dataset_ref)})
+        return
+
+    try:
+        ds_urn = XsUri(
+            f"urn:mlmd-bom-ref:{dataset_ref}") if XsUri else f"urn:mlmd-bom-ref:{dataset_ref}"
+        model_comp.external_references.add(
+            ExternalReference(
+                type=ExternalReferenceType.BOM,
+                url=ds_urn,
+                comment="Uses dataset BOM-ref",
+            )
+        )
+        mdl_urn = XsUri(
+            f"urn:mlmd-bom-ref:{model_ref}") if XsUri else f"urn:mlmd-bom-ref:{model_ref}"
+        dataset_comp.external_references.add(
+            ExternalReference(
+                type=ExternalReferenceType.BOM,
+                url=mdl_urn,
+                comment="Used by model BOM-ref",
+            )
+        )
+    except Exception:
+        pass
+
+    # Helpful properties for simpler consumers
+    try:
+        if Property is not None:
+            model_comp.properties.add(
+                Property(name="dataset:uses-bom-ref", value=str(dataset_ref)))
+            dataset_comp.properties.add(
+                Property(name="dataset:used-by-bom-ref", value=str(model_ref)))
     except Exception:
         pass
 
@@ -169,11 +242,12 @@ def add_model_uses_dataset_relation(bom: Bom, model_bom_ref: str, dataset_bom_ur
 def create_dataset_bom(metadata: Dict[str, Any]) -> Bom:
     """Create a BOM for a dataset."""
     bom = Bom()
+    data_type = getattr(ComponentType, 'DATA', None) or ComponentType.FILE
     dataset_component = Component(
-        name=metadata.get("dataset_name", "dataset"),
+        name=metadata.get("dataset_name") or metadata.get("name") or "dataset",
         version=metadata.get("version"),
-        type=ComponentType.DATA,
-        description=metadata.get("description", ""),
+        type=data_type,
+        description=f"Dataset {metadata.get('dataset_name') or metadata.get('name')}",
         bom_ref=metadata.get("uri"),
     )
     if Property is not None:
@@ -188,6 +262,7 @@ def create_dataset_bom(metadata: Dict[str, Any]) -> Bom:
     except Exception:
         pass
     bom.components.add(dataset_component)
+
     # Tools metadata
     try:
         if cdx_lib_component:
@@ -203,72 +278,74 @@ def create_dataset_bom(metadata: Dict[str, Any]) -> Bom:
                 Tool(vendor="mlmd-bom", name="mlmd-to-bom", version="0.1.0"))
         except Exception:
             pass
+    logger.debug("created dataset BOM", extra={"dataset": metadata.get(
+        "dataset_name"), "version": metadata.get("version")})
     return bom
 
 
-def add_dataset_used_by_model(bom: Bom, dataset_bom_ref: str, model_bom_url: str):
-    """Add a reference to a model BOM from a dataset BOM (used by model)."""
-    dataset_component = None
-    for c in bom.components:
-        if getattr(c, 'bom_ref', None) == dataset_bom_ref:
-            dataset_component = c
-            break
-    if not dataset_component:
+def add_dataset_lineage_relation(parent_bom: Bom, child_bom: Bom):
+    """Add a parent/child dataset relations to a dataset BOM."""
+    def find_dataset_component(b: Bom):
+        data_type = getattr(ComponentType, 'DATA', None)
+        comp = None
+        try:
+            comp = getattr(b.metadata, 'component', None)
+        except Exception:
+            comp = None
+        if comp and getattr(comp, 'type', None) in (data_type, ComponentType.FILE):
+            return comp
+        for c in b.components:
+            if getattr(c, 'type', None) in (data_type, ComponentType.FILE):
+                return c
+        return None
+
+    parent_comp = find_dataset_component(parent_bom)
+    child_comp = find_dataset_component(child_bom)
+    if not parent_comp or not child_comp:
+        logger.warning("could not locate dataset components for lineage", extra={
+                       "has_parent": bool(parent_comp), "has_child": bool(child_comp)})
         return
+
+    parent_ref = getattr(parent_comp, 'bom_ref', None)
+    child_ref = getattr(child_comp, 'bom_ref', None)
+    if not parent_ref or not child_ref:
+        logger.warning("missing bom-ref for dataset lineage", extra={
+                       "parent_ref": bool(parent_ref), "child_ref": bool(child_ref)})
+        return
+
     try:
-        url_val = XsUri(model_bom_url) if XsUri else model_bom_url
-        dataset_component.external_references.add(
+        parent_urn = XsUri(
+            f"urn:mlmd-bom-ref:{parent_ref}") if XsUri else f"urn:mlmd-bom-ref:{parent_ref}"
+        child_urn = XsUri(
+            f"urn:mlmd-bom-ref:{child_ref}") if XsUri else f"urn:mlmd-bom-ref:{child_ref}"
+        child_comp.external_references.add(
             ExternalReference(
-                type=ExternalReferenceType.APPLICATION,
-                url=url_val,
-                comment="Used by model BOM"
+                type=ExternalReferenceType.BOM,
+                url=parent_urn,
+                comment="Lineage: parent dataset BOM-ref",
+            )
+        )
+        parent_comp.external_references.add(
+            ExternalReference(
+                type=ExternalReferenceType.BOM,
+                url=child_urn,
+                comment="Lineage: child dataset BOM-ref",
             )
         )
     except Exception:
         pass
 
+    try:
+        if Property is not None:
+            child_comp.properties.add(
+                Property(name="lineage:parent-bom-ref", value=str(parent_ref)))
+            parent_comp.properties.add(
+                Property(name="lineage:child-bom-ref", value=str(child_ref)))
+    except Exception:
+        pass
 
-def add_dataset_lineage_relation(bom: Bom, dataset_bom_ref: str, parent_bom_url: Optional[str] = None, parent_bom_serial: Optional[str] = None, parent_bom_version: Optional[int] = None, parent_dataset_bom_ref: Optional[str] = None):
-    """Add a parent/child dataset relation to a dataset BOM."""
-    dataset_component = None
-    for c in bom.components:
-        if getattr(c, 'bom_ref', None) == dataset_bom_ref:
-            dataset_component = c
-            break
-    if not dataset_component:
-        return
-    if parent_bom_serial and parent_dataset_bom_ref:
-        version_str = str(parent_bom_version or 1)
-        bom_link = f"urn:cdx:{parent_bom_serial}/{version_str}#{parent_dataset_bom_ref}"
-        try:
-            url_val = XsUri(bom_link) if XsUri else bom_link
-            dataset_component.external_references.add(
-                ExternalReference(
-                    type=ExternalReferenceType.BOM,
-                    url=url_val,
-                    comment="Parent/ancestor dataset via BOM-Link"
-                )
-            )
-        except Exception:
-            pass
-    elif parent_bom_url:
-        try:
-            url_val = XsUri(parent_bom_url) if XsUri else parent_bom_url
-            dataset_component.external_references.add(
-                ExternalReference(
-                    type=ExternalReferenceType.BOM,
-                    url=url_val,
-                    comment="Parent/ancestor dataset BOM"
-                )
-            )
-        except Exception:
-            pass
-        try:
-            if Property is not None:
-                dataset_component.properties.add(
-                    Property(name="lineage:parent-bom-url", value=parent_bom_url))
-        except Exception:
-            pass
+    logger.debug("added bidirectional dataset lineage", extra={
+                 "parent_ref": str(parent_ref), "child_ref": str(child_ref)})
 
 
 def write_cyclonedx_files(

@@ -17,10 +17,13 @@ from typing import List, Dict, Any
 
 from mlmd_support import connect_mlmd
 from scenario_loader import populate_mlmd_from_scenario
-from extraction import extract_model_and_deps
+from extraction import extract_model_deps_and_datasets
 from cyclonedx_gen import (
     create_model_bom,
     add_model_lineage_relation,
+    create_dataset_bom,
+    add_dataset_lineage_relation,
+    add_model_dataset_relation,
     write_cyclonedx_files,
 )
 
@@ -171,49 +174,146 @@ def emit_per_model_boms(by_name: Dict[str, List[Dict[str, Any]]], cdx_dir: Path)
         logger.info("processing model group", extra={
                     "model": name, "versions": len(items)})
         items.sort(key=lambda x: version_key(x.get("version", "")))
+        # 1) Build BOMs for all versions first
+        bom_cache: Dict[str, Any] = {}
         for idx, item in enumerate(items):
             model_name = item.get("model_name", "model")
             version = item.get("version", f"{idx}")
             base = f"{safe_filename(model_name)}-{safe_filename(version)}"
-            parent = items[idx - 1] if idx > 0 else None
-            parent_cx_url = None
-            parent_bom_serial = None
-            parent_bom_version = None
-            parent_model_bom_ref = None
-            logger.debug("model version", extra={
-                         "model": model_name, "version": version, "uri": item.get("uri")})
-            if parent is not None:
-                parent_cx_url, parent_bom_serial, parent_bom_version, parent_model_bom_ref = get_parent_bom_info(
-                    cdx_dir, parent, idx)
-                logger.debug(
-                    "parent bom info",
-                    extra={
-                        "parent_model": parent.get("model_name"),
-                        "parent_version": parent.get("version"),
-                        "cx_url": parent_cx_url,
-                        "serial": parent_bom_serial,
-                        "bom_version": parent_bom_version,
-                        "parent_ref": parent_model_bom_ref,
-                    },
-                )
-            # Create model BOM
-            bom = create_model_bom(item)
-            if parent_cx_url or (parent_bom_serial and parent_model_bom_ref):
-                logger.debug("adding model lineage relation",
-                             extra={"uri": item.get("uri")})
-                add_model_lineage_relation(
-                    bom,
-                    model_bom_ref=item.get("uri"),
-                    parent_bom_url=parent_cx_url,
-                    parent_bom_serial=parent_bom_serial,
-                    parent_bom_version=parent_bom_version if isinstance(
-                        parent_bom_version, int) else None,
-                    parent_model_bom_ref=parent_model_bom_ref,
-                )
+            logger.debug("build model BOM", extra={
+                "model": model_name, "version": version, "uri": item.get("uri")})
+            bom_cache[base] = create_model_bom(item)
+
+        # 2) Add lineage between adjacent versions
+        for idx in range(1, len(items)):
+            parent_item = items[idx - 1]
+            child_item = items[idx]
+            parent_base = f"{safe_filename(parent_item.get('model_name', 'model'))}-{safe_filename(parent_item.get('version', f'{idx-1}'))}"
+            child_base = f"{safe_filename(child_item.get('model_name', 'model'))}-{safe_filename(child_item.get('version', f'{idx}'))}"
+            parent_bom = bom_cache[parent_base]
+            child_bom = bom_cache[child_base]
+            logger.debug("link lineage (parent<->child)", extra={
+                "parent": parent_item.get("uri"),
+                "child": child_item.get("uri")
+            })
+            add_model_lineage_relation(parent_bom, child_bom)
+
+        # 3) Write all BOMs once
+        for idx, item in enumerate(items):
+            model_name = item.get("model_name", "model")
+            version = item.get("version", f"{idx}")
+            base = f"{safe_filename(model_name)}-{safe_filename(version)}"
             write_cyclonedx_files(
-                bom,
+                bom_cache[base],
                 out_json=str(cdx_dir / f"{base}.cyclonedx.json"),
             )
+
+
+def group_datasets_by_name(dss: List[Dict[str, Any]]):
+    by_name = {}
+    for item in dss:
+        by_name.setdefault(item.get("dataset_name", item.get(
+            "name", "dataset")), []).append(item)
+    return by_name
+
+
+def emit_dataset_boms(by_name: Dict[str, List[Dict[str, Any]]], cdx_dir: Path):
+    logger.debug("emit_dataset_boms", extra={"groups": len(by_name)})
+    for name, items in by_name.items():
+        logger.info("processing dataset group", extra={
+                    "dataset": name, "versions": len(items)})
+        items.sort(key=lambda x: version_key(x.get("version", "")))
+        # Build all BOMs
+        bom_cache: Dict[str, Any] = {}
+        for idx, item in enumerate(items):
+            ds_name = item.get("dataset_name") or item.get("name", "dataset")
+            version = item.get("version", f"{idx}")
+            base = f"{safe_filename(ds_name)}-{safe_filename(version)}"
+            logger.debug("build dataset BOM", extra={
+                         "dataset": ds_name, "version": version, "uri": item.get("uri")})
+            bom_cache[base] = create_dataset_bom(item)
+        # Lineage between adjacent versions
+        for idx in range(1, len(items)):
+            parent_item = items[idx - 1]
+            child_item = items[idx]
+            parent_base = f"{safe_filename(parent_item.get('dataset_name') or parent_item.get('name', 'dataset'))}-{safe_filename(parent_item.get('version', f'{idx-1}'))}"
+            child_base = f"{safe_filename(child_item.get('dataset_name') or child_item.get('name', 'dataset'))}-{safe_filename(child_item.get('version', f'{idx}'))}"
+            add_dataset_lineage_relation(
+                bom_cache[parent_base], bom_cache[child_base])
+        # Write all BOMs
+        for idx, item in enumerate(items):
+            ds_name = item.get("dataset_name") or item.get("name", "dataset")
+            version = item.get("version", f"{idx}")
+            base = f"{safe_filename(ds_name)}-{safe_filename(version)}"
+            write_cyclonedx_files(
+                bom_cache[base],
+                out_json=str(cdx_dir / f"{base}.cyclonedx.json"),
+            )
+
+
+def emit_model_dataset_relations(models: List[Dict[str, Any]], datasets: List[Dict[str, Any]], cdx_dir: Path):
+    """Create BOMs for models and datasets, wire lineage and model↔dataset relations, then write all once."""
+    # Group and build caches
+    models_by_name = group_models_by_name(models)
+    datasets_by_name = group_datasets_by_name(datasets)
+
+    # Build model BOMs
+    model_boms: Dict[str, Any] = {}
+    for name, items in models_by_name.items():
+        items.sort(key=lambda x: version_key(x.get("version", "")))
+        for idx, item in enumerate(items):
+            base = f"{safe_filename(item.get('model_name', 'model'))}-{safe_filename(item.get('version', f'{idx}'))}"
+            model_boms[base] = create_model_bom(item)
+    # Model lineage
+    for name, items in models_by_name.items():
+        for idx in range(1, len(items)):
+            p = items[idx-1]
+            c = items[idx]
+            p_base = f"{safe_filename(p.get('model_name', 'model'))}-{safe_filename(p.get('version', f'{idx-1}'))}"
+            c_base = f"{safe_filename(c.get('model_name', 'model'))}-{safe_filename(c.get('version', f'{idx}'))}"
+            add_model_lineage_relation(model_boms[p_base], model_boms[c_base])
+
+    # Build dataset BOMs
+    dataset_boms: Dict[str, Any] = {}
+    uri_to_ds_key: Dict[str, str] = {}
+    for name, items in datasets_by_name.items():
+        items.sort(key=lambda x: version_key(x.get("version", "")))
+        for idx, item in enumerate(items):
+            ds_name = item.get("dataset_name") or item.get("name", "dataset")
+            base = f"{safe_filename(ds_name)}-{safe_filename(item.get('version', f'{idx}'))}"
+            dataset_boms[base] = create_dataset_bom(item)
+            uri = item.get("uri")
+            if uri:
+                uri_to_ds_key[uri] = base
+    # Dataset lineage
+    for name, items in datasets_by_name.items():
+        for idx in range(1, len(items)):
+            p = items[idx-1]
+            c = items[idx]
+            p_base = f"{safe_filename(p.get('dataset_name') or p.get('name', 'dataset'))}-{safe_filename(p.get('version', f'{idx-1}'))}"
+            c_base = f"{safe_filename(c.get('dataset_name') or c.get('name', 'dataset'))}-{safe_filename(c.get('version', f'{idx}'))}"
+            add_dataset_lineage_relation(
+                dataset_boms[p_base], dataset_boms[c_base])
+
+    # Model ↔ Dataset relations
+    for name, items in models_by_name.items():
+        for idx, m in enumerate(items):
+            m_base = f"{safe_filename(m.get('model_name', 'model'))}-{safe_filename(m.get('version', f'{idx}'))}"
+            ds_uris = m.get("dataset_uris", []) or []
+            for uri in ds_uris:
+                key = uri_to_ds_key.get(uri)
+                if not key:
+                    continue
+                add_model_dataset_relation(
+                    model_boms[m_base], dataset_boms[key])
+
+    # Finally, write all BOMs
+    for base, bom in model_boms.items():
+        write_cyclonedx_files(bom, out_json=str(
+            cdx_dir / f"{base}.cyclonedx.json"))
+    for base, bom in dataset_boms.items():
+        write_cyclonedx_files(bom, out_json=str(
+            cdx_dir / f"{base}.cyclonedx.json"))
 
 
 def main(argv: List[str]) -> int:
@@ -232,25 +332,32 @@ def main(argv: List[str]) -> int:
     logger.info("populating MLMD from scenario", extra={"scenario": scenario})
     populate_mlmd_from_scenario(store, scenario)
 
-    # Extract model metadata
+    # Extract model and dataset metadata
     context_name = os.environ.get("EXTRACT_CONTEXT")
-    logger.info("extracting model metadata", extra={"context": context_name})
-    mds = extract_model_and_deps(store, context_name=context_name)
-    md = mds[0] if mds else {}
+    logger.info("extracting model and dataset metadata",
+                extra={"context": context_name})
+    extracted = extract_model_deps_and_datasets(
+        store, context_name=context_name)
+    models = extracted.get("models", [])
+    datasets = extracted.get("datasets", [])
+    md = models[0] if models else {}
 
     # Write extracted metadata
     write_json(md, out_dir / "extracted_mlmd.json")
-    write_json(mds, out_dir / "extracted_mlmd_multi.json")
+    write_json(models, out_dir / "extracted_mlmd_models.json")
+    write_json(datasets, out_dir / "extracted_mlmd_datasets.json")
+    write_json(extracted, out_dir / "extracted_mlmd_multi.json")
 
     # Clean previous CycloneDX outputs
     clean_previous_outputs(cdx_dir, out_dir)
 
     # Group models by name
-    by_name = group_models_by_name(mds)
+    by_name = group_models_by_name(models)
     logger.info("grouped models", extra={"groups": len(by_name)})
 
-    # Emit per-model CycloneDX BOMs
-    emit_per_model_boms(by_name, cdx_dir)
+    # Emit per-model CycloneDX BOMs (this also handles lineage between versions)
+    # New combined emission to also include datasets and relations
+    emit_model_dataset_relations(models, datasets, cdx_dir)
 
     elapsed = time.time() - t0
     logger.info("generated CycloneDX BOMs", extra={
