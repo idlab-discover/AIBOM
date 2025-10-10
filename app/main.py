@@ -257,23 +257,15 @@ def emit_model_dataset_relations(models: List[Dict[str, Any]], datasets: List[Di
     models_by_name = group_models_by_name(models)
     datasets_by_name = group_datasets_by_name(datasets)
 
-    # Build model BOMs
+    # Build model BOMs (in memory, do not write yet)
     model_boms: Dict[str, Any] = {}
     for name, items in models_by_name.items():
         items.sort(key=lambda x: version_key(x.get("version", "")))
         for idx, item in enumerate(items):
             base = f"{safe_filename(item.get('model_name', 'model'))}-{safe_filename(item.get('version', f'{idx}'))}"
             model_boms[base] = create_model_bom(item)
-    # Model lineage
-    for name, items in models_by_name.items():
-        for idx in range(1, len(items)):
-            p = items[idx-1]
-            c = items[idx]
-            p_base = f"{safe_filename(p.get('model_name', 'model'))}-{safe_filename(p.get('version', f'{idx-1}'))}"
-            c_base = f"{safe_filename(c.get('model_name', 'model'))}-{safe_filename(c.get('version', f'{idx}'))}"
-            add_model_lineage_relation(model_boms[p_base], model_boms[c_base])
 
-    # Build dataset BOMs
+    # Build dataset BOMs (in memory, do not write yet)
     dataset_boms: Dict[str, Any] = {}
     uri_to_ds_key: Dict[str, str] = {}
     for name, items in datasets_by_name.items():
@@ -285,7 +277,17 @@ def emit_model_dataset_relations(models: List[Dict[str, Any]], datasets: List[Di
             uri = item.get("uri")
             if uri:
                 uri_to_ds_key[uri] = base
-    # Dataset lineage
+
+    # Add model lineage (in memory)
+    for name, items in models_by_name.items():
+        for idx in range(1, len(items)):
+            p = items[idx-1]
+            c = items[idx]
+            p_base = f"{safe_filename(p.get('model_name', 'model'))}-{safe_filename(p.get('version', f'{idx-1}'))}"
+            c_base = f"{safe_filename(c.get('model_name', 'model'))}-{safe_filename(c.get('version', f'{idx}'))}"
+            add_model_lineage_relation(model_boms[p_base], model_boms[c_base])
+
+    # Add dataset lineage (in memory)
     for name, items in datasets_by_name.items():
         for idx in range(1, len(items)):
             p = items[idx-1]
@@ -295,7 +297,7 @@ def emit_model_dataset_relations(models: List[Dict[str, Any]], datasets: List[Di
             add_dataset_lineage_relation(
                 dataset_boms[p_base], dataset_boms[c_base])
 
-    # Model ↔ Dataset relations
+    # Add model ↔ dataset relations (in memory)
     for name, items in models_by_name.items():
         for idx, m in enumerate(items):
             m_base = f"{safe_filename(m.get('model_name', 'model'))}-{safe_filename(m.get('version', f'{idx}'))}"
@@ -307,7 +309,7 @@ def emit_model_dataset_relations(models: List[Dict[str, Any]], datasets: List[Di
                 add_model_dataset_relation(
                     model_boms[m_base], dataset_boms[key])
 
-    # Finally, write all BOMs
+    # Now write all BOMs after all relationships are established
     for base, bom in model_boms.items():
         write_cyclonedx_files(bom, out_json=str(
             cdx_dir / f"{base}.cyclonedx.json"))

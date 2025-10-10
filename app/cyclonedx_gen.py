@@ -9,6 +9,7 @@ from packageurl import PackageURL  # type: ignore
 from cyclonedx.builder.this import this_component as cdx_lib_component  # type: ignore
 from cyclonedx.model.bom import Bom  # type: ignore
 from cyclonedx.model.component import Component, ComponentType  # type: ignore
+from cyclonedx.model.bom_ref import BomRef
 from cyclonedx.model import ExternalReference, ExternalReferenceType  # type: ignore
 from cyclonedx.model import XsUri, Property  # type: ignore
 from cyclonedx.model.tool import Tool  # type: ignore
@@ -24,12 +25,13 @@ logger = logging.getLogger(__name__)
 def create_model_bom(metadata: Dict[str, Any]) -> Bom:
     """Create a BOM for an AI model."""
     bom = Bom()
+    uri = metadata.get("uri")
     model_component = Component(
         name=metadata.get("model_name", "model"),
         version=metadata.get("version"),
         type=ComponentType.APPLICATION,
         description=f"ML model using {metadata.get('framework', '')} ({metadata.get('format', '')})",
-        bom_ref=metadata.get("uri"),
+        bom_ref=BomRef(uri),
     )
     if Property is not None:
         for k, v in (metadata.get("properties") or {}).items():
@@ -42,10 +44,11 @@ def create_model_bom(metadata: Dict[str, Any]) -> Bom:
         bom.metadata.component = model_component
     except Exception:
         pass
-    bom.components.add(model_component)
+    # Do NOT add the root model component to bom.components; only set as metadata.component
     # Add dependencies (libraries)
     created_dep_components: List[Component] = []
     for dep in metadata.get("dependencies", []):
+        dep_bom_ref = dep.get("purl") or dep.get("uri")
         purl_obj = None
         if dep.get("purl"):
             try:
@@ -56,8 +59,8 @@ def create_model_bom(metadata: Dict[str, Any]) -> Bom:
             name=dep.get("name"),
             version=dep.get("version"),
             type=ComponentType.LIBRARY,
-            bom_ref=dep.get("purl") or dep.get("uri"),
             purl=purl_obj,
+            bom_ref=BomRef(dep_bom_ref),
         )
         if Property is not None:
             for k, v in (dep.get("properties") or {}).items():
@@ -132,23 +135,23 @@ def add_model_lineage_relation(parent_bom: Bom, child_bom: Bom) -> None:
         return
 
     try:
-        # Use a stable URN with bom-ref, viewers can resolve as needed
-        parent_urn = XsUri(
-            f"urn:mlmd-bom-ref:{parent_ref}") if XsUri else f"urn:mlmd-bom-ref:{parent_ref}"
-        child_urn = XsUri(
-            f"urn:mlmd-bom-ref:{child_ref}") if XsUri else f"urn:mlmd-bom-ref:{child_ref}"
+        # Use the original bom-ref in the url, and a readable URN in the comment
+        parent_url = parent_ref
+        child_url = child_ref
+        parent_urn = f"urn:mlmd-bom-ref:{parent_ref}"
+        child_urn = f"urn:mlmd-bom-ref:{child_ref}"
         child_comp.external_references.add(
             ExternalReference(
                 type=ExternalReferenceType.BOM,
-                url=parent_urn,
-                comment="Lineage: parent model BOM-ref",
+                url=parent_url,
+                comment=f"Lineage: parent model BOM-ref ({parent_urn})",
             )
         )
         parent_comp.external_references.add(
             ExternalReference(
                 type=ExternalReferenceType.BOM,
-                url=child_urn,
-                comment="Lineage: child model BOM-ref",
+                url=child_url,
+                comment=f"Lineage: child model BOM-ref ({child_urn})",
             )
         )
     except Exception:
@@ -205,22 +208,23 @@ def add_model_dataset_relation(model_bom: Bom, dataset_bom: Bom) -> None:
         return
 
     try:
-        ds_urn = XsUri(
-            f"urn:mlmd-bom-ref:{dataset_ref}") if XsUri else f"urn:mlmd-bom-ref:{dataset_ref}"
+        # Use the original bom-ref in the url, and a readable URN in the comment
+        ds_url = dataset_ref
+        mdl_url = model_ref
+        ds_urn = f"urn:mlmd-bom-ref:{dataset_ref}"
+        mdl_urn = f"urn:mlmd-bom-ref:{model_ref}"
         model_comp.external_references.add(
             ExternalReference(
                 type=ExternalReferenceType.BOM,
-                url=ds_urn,
-                comment="Uses dataset BOM-ref",
+                url=ds_url,
+                comment=f"Uses dataset BOM-ref ({ds_urn})",
             )
         )
-        mdl_urn = XsUri(
-            f"urn:mlmd-bom-ref:{model_ref}") if XsUri else f"urn:mlmd-bom-ref:{model_ref}"
         dataset_comp.external_references.add(
             ExternalReference(
                 type=ExternalReferenceType.BOM,
-                url=mdl_urn,
-                comment="Used by model BOM-ref",
+                url=mdl_url,
+                comment=f"Used by model BOM-ref ({mdl_urn})",
             )
         )
     except Exception:
@@ -231,12 +235,13 @@ def create_dataset_bom(metadata: Dict[str, Any]) -> Bom:
     """Create a BOM for a dataset."""
     bom = Bom()
     data_type = getattr(ComponentType, 'DATA', None) or ComponentType.FILE
+    uri = metadata.get("uri")
     dataset_component = Component(
         name=metadata.get("dataset_name") or metadata.get("name") or "dataset",
         version=metadata.get("version"),
         type=data_type,
         description=f"Dataset {metadata.get('dataset_name') or metadata.get('name')}",
-        bom_ref=metadata.get("uri"),
+        bom_ref=BomRef(uri),
     )
     if Property is not None:
         for k, v in (metadata.get("properties") or {}).items():
@@ -249,7 +254,7 @@ def create_dataset_bom(metadata: Dict[str, Any]) -> Bom:
         bom.metadata.component = dataset_component
     except Exception:
         pass
-    bom.components.add(dataset_component)
+    # Do NOT add the root dataset component to bom.components; only set as metadata.component
 
     # Tools metadata
     try:
@@ -302,22 +307,23 @@ def add_dataset_lineage_relation(parent_bom: Bom, child_bom: Bom):
         return
 
     try:
-        parent_urn = XsUri(
-            f"urn:mlmd-bom-ref:{parent_ref}") if XsUri else f"urn:mlmd-bom-ref:{parent_ref}"
-        child_urn = XsUri(
-            f"urn:mlmd-bom-ref:{child_ref}") if XsUri else f"urn:mlmd-bom-ref:{child_ref}"
+        # Use the original bom-ref in the url, and a readable URN in the comment
+        parent_url = parent_ref
+        child_url = child_ref
+        parent_urn = f"urn:mlmd-bom-ref:{parent_ref}"
+        child_urn = f"urn:mlmd-bom-ref:{child_ref}"
         child_comp.external_references.add(
             ExternalReference(
                 type=ExternalReferenceType.BOM,
-                url=parent_urn,
-                comment="Lineage: parent dataset BOM-ref",
+                url=parent_url,
+                comment=f"Lineage: parent dataset BOM-ref ({parent_urn})",
             )
         )
         parent_comp.external_references.add(
             ExternalReference(
                 type=ExternalReferenceType.BOM,
-                url=child_urn,
-                comment="Lineage: child dataset BOM-ref",
+                url=child_url,
+                comment=f"Lineage: child dataset BOM-ref ({child_urn})",
             )
         )
     except Exception:
