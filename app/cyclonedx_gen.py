@@ -101,7 +101,6 @@ def add_model_lineage_relation(parent_bom: Bom, child_bom: Bom) -> None:
     This function finds the model (application) component in each BOM and:
     - Adds an externalReference of type BOM on the child pointing to the parent's bom-ref
     - Adds an externalReference of type BOM on the parent pointing to the child's bom-ref
-    - Adds properties to both components capturing the other side's bom-ref for tool consumption
     Note: URLs are stored as URNs with the target bom-ref to avoid needing file paths or serials.
     """
     def find_model_component(b: Bom):
@@ -163,7 +162,6 @@ def add_model_dataset_relation(model_bom: Bom, dataset_bom: Bom) -> None:
     """
     Add relations between a model BOM and a dataset BOM (uses dataset). (both directions)
     - Adds externalReferences of type BOM on both components
-    - Adds lightweight properties to ease downstream tooling
     """
     def find_model_component(b: Bom):
         comp = None
@@ -225,16 +223,6 @@ def add_model_dataset_relation(model_bom: Bom, dataset_bom: Bom) -> None:
                 comment="Used by model BOM-ref",
             )
         )
-    except Exception:
-        pass
-
-    # Helpful properties for simpler consumers
-    try:
-        if Property is not None:
-            model_comp.properties.add(
-                Property(name="dataset:uses-bom-ref", value=str(dataset_ref)))
-            dataset_comp.properties.add(
-                Property(name="dataset:used-by-bom-ref", value=str(model_ref)))
     except Exception:
         pass
 
@@ -332,15 +320,6 @@ def add_dataset_lineage_relation(parent_bom: Bom, child_bom: Bom):
                 comment="Lineage: child dataset BOM-ref",
             )
         )
-    except Exception:
-        pass
-
-    try:
-        if Property is not None:
-            child_comp.properties.add(
-                Property(name="lineage:parent-bom-ref", value=str(parent_ref)))
-            parent_comp.properties.add(
-                Property(name="lineage:child-bom-ref", value=str(child_ref)))
     except Exception:
         pass
 
