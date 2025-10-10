@@ -1,0 +1,408 @@
+# Combined scenario: demo-complex + realistic-mlops
+# This scenario merges two pipelines/projects with distinct models, datasets, and libraries.
+
+# 1) Types
+# (Union of both scenarios)
+types:
+  artifact:
+    Model:
+      properties:
+        name: STRING
+        version: STRING
+        framework: STRING
+        format: STRING
+        accuracy: DOUBLE
+        git_commit: STRING
+        metrics_auc: DOUBLE
+        metrics_f1: DOUBLE
+    Library:
+      properties:
+        name: STRING
+        version: STRING
+        purl: STRING
+    Dataset:
+      properties:
+        name: STRING
+        split: STRING
+        version: STRING
+        rows: INT
+        schema: STRING
+    FeatureTable:
+      properties:
+        name: STRING
+        version: STRING
+        source: STRING
+    PreprocessCode:
+      properties:
+        name: STRING
+        version: STRING
+        git_commit: STRING
+        entrypoint: STRING
+    ContainerImage:
+      properties:
+        name: STRING
+        tag: STRING
+        digest: STRING
+    EvaluationReport:
+      properties:
+        name: STRING
+        version: STRING
+        auc: DOUBLE
+        f1: DOUBLE
+  execution:
+    TrainingRun:
+      properties:
+        pipeline: STRING
+        state: STRING
+        run_id: STRING
+        epochs: INT
+        learning_rate: DOUBLE
+        seed: INT
+    DataIngestion:
+      properties:
+        pipeline: STRING
+        state: STRING
+        run_id: STRING
+    FeatureEngineering:
+      properties:
+        pipeline: STRING
+        state: STRING
+        run_id: STRING
+    Evaluation:
+      properties:
+        pipeline: STRING
+        state: STRING
+        run_id: STRING
+    Packaging:
+      properties:
+        pipeline: STRING
+        state: STRING
+        run_id: STRING
+  context:
+    Project:
+      properties:
+        key: STRING
+        owner: STRING
+    Experiment:
+      properties:
+        note: STRING
+    Pipeline:
+      properties:
+        owner: STRING
+    Environment:
+      properties:
+        name: STRING
+
+# 2) Contexts
+contexts:
+  expA:
+    type: Experiment
+    name: expA
+    properties: { note: "Experiment A" }
+  expB:
+    type: Experiment
+    name: expB
+    properties: { note: "Experiment B" }
+  expJan:
+    type: Experiment
+    name: expJan
+    properties: { note: "January baseline" }
+  expFeb:
+    type: Experiment
+    name: expFeb
+    properties: { note: "February improvements" }
+  pipe1:
+    type: Pipeline
+    name: demo-pipeline
+    properties: { owner: ml-team }
+  pipe2:
+    type: Pipeline
+    name: churn-pipeline
+    properties: { owner: ml-platform }
+  proj:
+    type: Project
+    name: churn-mlops
+    properties: { key: CHURN, owner: ml-platform }
+  envStaging:
+    type: Environment
+    name: staging
+    properties: { name: staging }
+  envProd:
+    type: Environment
+    name: prod
+    properties: { name: prod }
+
+# 3) Artifacts (union, with unique uris)
+artifacts:
+  # Demo-complex pipeline
+  ds1:
+    type: Dataset
+    uri: data://demo-dataset/2025-10-01/train
+    properties: { name: demo-dataset, split: train, version: 2025-10-01, rows: 100000 }
+    contexts: [pipe1]
+  ds2:
+    type: Dataset
+    uri: data://demo-dataset/2025-10-02/train
+    properties: { name: demo-dataset, split: train, version: 2025-10-02, rows: 120000 }
+    contexts: [pipe1]
+  lib_np_121:
+    type: Library
+    uri: pkg://numpy/1.21.0
+    properties: { name: numpy, version: 1.21.0, purl: pkg:pypi/numpy@1.21.0 }
+  lib_tf_260:
+    type: Library
+    uri: pkg://tensorflow/2.6.0
+    properties: { name: tensorflow, version: 2.6.0, purl: pkg:pypi/tensorflow@2.6.0 }
+  lib_np_122:
+    type: Library
+    uri: pkg://numpy/1.22.0
+    properties: { name: numpy, version: 1.22.0, purl: pkg:pypi/numpy@1.22.0 }
+  lib_tf_270:
+    type: Library
+    uri: pkg://tensorflow/2.7.0
+    properties: { name: tensorflow, version: 2.7.0, purl: pkg:pypi/tensorflow@2.7.0 }
+  lib_pd_135:
+    type: Library
+    uri: pkg://pandas/1.3.5
+    properties: { name: pandas, version: 1.3.5, purl: pkg:pypi/pandas@1.3.5 }
+  model_v1:
+    type: Model
+    uri: models://fakenet/1.0.0
+    properties: { name: FakeNet, version: 1.0.0, framework: TensorFlow, format: SavedModel, accuracy: 0.88 }
+  model_v11:
+    type: Model
+    uri: models://fakenet/1.1.0
+    properties: { name: FakeNet, version: 1.1.0, framework: TensorFlow, format: SavedModel, accuracy: 0.91 }
+
+  # Realistic-mlops pipeline
+  ds_2025_09:
+    type: Dataset
+    uri: data://churn/2025-09/train
+    properties: { name: churn-dataset, split: train, version: 2025-09, rows: 1000000, schema: v3 }
+    contexts: [pipe2]
+  ds_2025_10:
+    type: Dataset
+    uri: data://churn/2025-10/train
+    properties: { name: churn-dataset, split: train, version: 2025-10, rows: 1200000, schema: v3 }
+    contexts: [pipe2]
+  feats_v5:
+    type: FeatureTable
+    uri: features://churn/features@5
+    properties: { name: churn_features, version: 5, source: batch }
+    contexts: [pipe2]
+  prep_v2:
+    type: PreprocessCode
+    uri: code://churn/feature-prep@v2
+    properties: { name: churn-prep, version: v2, git_commit: 4f2c9a1, entrypoint: preprocess.py }
+  lib_numpy_1264:
+    type: Library
+    uri: pkg://numpy/1.26.4
+    properties: { name: numpy, version: 1.26.4, purl: pkg:pypi/numpy@1.26.4 }
+  lib_torch_2_3:
+    type: Library
+    uri: pkg://torch/2.3.0
+    properties: { name: torch, version: 2.3.0, purl: pkg:pypi/torch@2.3.0 }
+  lib_sklearn_1_5:
+    type: Library
+    uri: pkg://scikit-learn/1.5.0
+    properties: { name: scikit-learn, version: 1.5.0, purl: pkg:pypi/scikit-learn@1.5.0 }
+  lib_numpy_200:
+    type: Library
+    uri: pkg://numpy/2.0.0
+    properties: { name: numpy, version: 2.0.0, purl: pkg:pypi/numpy@2.0.0 }
+  lib_torch_2_4:
+    type: Library
+    uri: pkg://torch/2.4.0
+    properties: { name: torch, version: 2.4.0, purl: pkg:pypi/torch@2.4.0 }
+  lib_onnxrt_1_18:
+    type: Library
+    uri: pkg://onnxruntime/1.18.0
+    properties: { name: onnxruntime, version: 1.18.0, purl: pkg:pypi/onnxruntime@1.18.0 }
+  model_v1_0_0:
+    type: Model
+    uri: models://churnnet/1.0.0
+    properties: { name: ChurnNet, version: 1.0.0, framework: PyTorch, format: TorchScript, git_commit: 9f1a2bc, metrics_auc: 0.842, metrics_f1: 0.66 }
+  model_v1_1_0:
+    type: Model
+    uri: models://churnnet/1.1.0
+    properties: { name: ChurnNet, version: 1.1.0, framework: PyTorch, format: TorchScript, git_commit: b3d4e7f, metrics_auc: 0.861, metrics_f1: 0.69 }
+  model_v2_0_0:
+    type: Model
+    uri: models://churnnet/2.0.0
+    properties: { name: ChurnNet, version: 2.0.0, framework: PyTorch, format: TorchScript, git_commit: c8a1ee2, metrics_auc: 0.889, metrics_f1: 0.73 }
+  eval_v1:
+    type: EvaluationReport
+    uri: eval://churnnet/1.0.0
+    properties: { name: eval_v1, version: 1.0.0, auc: 0.84, f1: 0.66 }
+    contexts: [pipe2]
+  eval_v11:
+    type: EvaluationReport
+    uri: eval://churnnet/1.1.0
+    properties: { name: eval_v11, version: 1.1.0, auc: 0.86, f1: 0.69 }
+    contexts: [pipe2]
+  eval_v20:
+    type: EvaluationReport
+    uri: eval://churnnet/2.0.0
+    properties: { name: eval_v20, version: 2.0.0, auc: 0.89, f1: 0.73 }
+    contexts: [pipe2]
+  img_v1:
+    type: ContainerImage
+    uri: image://churnnet/1.0.0
+    properties: { name: churnnet, tag: 1.0.0, digest: sha256:abc123 }
+    contexts: [pipe2]
+  img_v11:
+    type: ContainerImage
+    uri: image://churnnet/1.1.0
+    properties: { name: churnnet, tag: 1.1.0, digest: sha256:def456 }
+    contexts: [pipe2]
+  img_v20:
+    type: ContainerImage
+    uri: image://churnnet/2.0.0
+    properties: { name: churnnet, tag: 2.0.0, digest: sha256:ghi789 }
+    contexts: [pipe2]
+
+# 4) Executions (union, with unique run_ids)
+executions:
+  run1:
+    type: TrainingRun
+    properties: { pipeline: demo-pipeline, state: COMPLETED, run_id: run-001, epochs: 10 }
+    contexts: [expA, pipe1]
+  run2:
+    type: TrainingRun
+    properties: { pipeline: demo-pipeline, state: COMPLETED, run_id: run-002, epochs: 12 }
+    contexts: [expB, pipe1]
+  train1:
+    type: TrainingRun
+    properties: { pipeline: churn-pipeline, state: COMPLETED, run_id: TR-001, epochs: 8, learning_rate: 0.001, seed: 42 }
+    contexts: [expJan, pipe2]
+  train2:
+    type: TrainingRun
+    properties: { pipeline: churn-pipeline, state: COMPLETED, run_id: TR-002, epochs: 10, learning_rate: 0.0008, seed: 123 }
+    contexts: [expFeb, pipe2]
+  train3:
+    type: TrainingRun
+    properties: { pipeline: churn-pipeline, state: COMPLETED, run_id: TR-003, epochs: 12, learning_rate: 0.0005, seed: 7 }
+    contexts: [expFeb, pipe2]
+  ingest1:
+    type: DataIngestion
+    properties: { pipeline: churn-pipeline, state: COMPLETED, run_id: ING-001 }
+    contexts: [pipe2]
+  ingest2:
+    type: DataIngestion
+    properties: { pipeline: churn-pipeline, state: COMPLETED, run_id: ING-002 }
+    contexts: [pipe2]
+  ingest3:
+    type: DataIngestion
+    properties: { pipeline: churn-pipeline, state: COMPLETED, run_id: ING-003 }
+    contexts: [pipe2]
+  fe1:
+    type: FeatureEngineering
+    properties: { pipeline: churn-pipeline, state: COMPLETED, run_id: FE-001 }
+    contexts: [pipe2]
+  fe2:
+    type: FeatureEngineering
+    properties: { pipeline: churn-pipeline, state: COMPLETED, run_id: FE-002 }
+    contexts: [pipe2]
+  fe3:
+    type: FeatureEngineering
+    properties: { pipeline: churn-pipeline, state: COMPLETED, run_id: FE-003 }
+    contexts: [pipe2]
+  eval1:
+    type: Evaluation
+    properties: { pipeline: churn-pipeline, state: COMPLETED, run_id: EV-001 }
+    contexts: [pipe2]
+  eval2:
+    type: Evaluation
+    properties: { pipeline: churn-pipeline, state: COMPLETED, run_id: EV-002 }
+    contexts: [pipe2]
+  eval3:
+    type: Evaluation
+    properties: { pipeline: churn-pipeline, state: COMPLETED, run_id: EV-003 }
+    contexts: [pipe2]
+  pack1:
+    type: Packaging
+    properties: { pipeline: churn-pipeline, state: COMPLETED, run_id: PK-001 }
+    contexts: [pipe2]
+  pack2:
+    type: Packaging
+    properties: { pipeline: churn-pipeline, state: COMPLETED, run_id: PK-002 }
+    contexts: [pipe2]
+  pack3:
+    type: Packaging
+    properties: { pipeline: churn-pipeline, state: COMPLETED, run_id: PK-003 }
+    contexts: [pipe2]
+
+# 5) Events (union, with unique artifact/execution references)
+events:
+  # Demo-complex pipeline
+  - { execution: run1, type: INPUT, artifact: ds1 }
+  - { execution: run1, type: INPUT, artifact: lib_np_121 }
+  - { execution: run1, type: INPUT, artifact: lib_tf_260 }
+  - { execution: run1, type: OUTPUT, artifact: model_v1 }
+  - { execution: run2, type: INPUT, artifact: ds2 }
+  - { execution: run2, type: INPUT, artifact: lib_np_122 }
+  - { execution: run2, type: INPUT, artifact: lib_tf_270 }
+  - { execution: run2, type: INPUT, artifact: lib_pd_135 }
+  - { execution: run2, type: OUTPUT, artifact: model_v11 }
+  # Realistic-mlops pipeline (churn)
+  - { execution: ingest1, type: OUTPUT, artifact: ds_2025_09 }
+  - { execution: fe1, type: INPUT, artifact: ds_2025_09 }
+  - { execution: fe1, type: OUTPUT, artifact: feats_v5 }
+  - { execution: train1, type: INPUT, artifact: feats_v5 }
+  - { execution: train1, type: INPUT, artifact: prep_v2 }
+  - { execution: train1, type: INPUT, artifact: lib_numpy_1264 }
+  - { execution: train1, type: INPUT, artifact: lib_torch_2_3 }
+  - { execution: train1, type: INPUT, artifact: lib_sklearn_1_5 }
+  - { execution: train1, type: OUTPUT, artifact: model_v1_0_0 }
+  - { execution: eval1, type: INPUT, artifact: model_v1_0_0 }
+  - { execution: eval1, type: INPUT, artifact: ds_2025_09 }
+  - { execution: eval1, type: OUTPUT, artifact: eval_v1 }
+  - { execution: pack1, type: INPUT, artifact: model_v1_0_0 }
+  - { execution: pack1, type: OUTPUT, artifact: img_v1 }
+
+  - { execution: ingest2, type: OUTPUT, artifact: ds_2025_10 }
+  - { execution: fe2, type: INPUT, artifact: ds_2025_10 }
+  - { execution: fe2, type: OUTPUT, artifact: feats_v5 }
+  - { execution: train2, type: INPUT, artifact: feats_v5 }
+  - { execution: train2, type: INPUT, artifact: prep_v2 }
+  - { execution: train2, type: INPUT, artifact: lib_numpy_200 }
+  - { execution: train2, type: INPUT, artifact: lib_torch_2_4 }
+  - { execution: train2, type: INPUT, artifact: lib_sklearn_1_5 }
+  - { execution: train2, type: OUTPUT, artifact: model_v1_1_0 }
+  - { execution: eval2, type: INPUT, artifact: model_v1_1_0 }
+  - { execution: eval2, type: INPUT, artifact: ds_2025_10 }
+  - { execution: eval2, type: OUTPUT, artifact: eval_v11 }
+  - { execution: pack2, type: INPUT, artifact: model_v1_1_0 }
+  - { execution: pack2, type: OUTPUT, artifact: img_v11 }
+
+  - { execution: ingest3, type: OUTPUT, artifact: ds_2025_10 }
+  - { execution: fe3, type: INPUT, artifact: ds_2025_10 }
+  - { execution: fe3, type: OUTPUT, artifact: feats_v5 }
+  - { execution: train3, type: INPUT, artifact: feats_v5 }
+  - { execution: train3, type: INPUT, artifact: prep_v2 }
+  - { execution: train3, type: INPUT, artifact: lib_numpy_200 }
+  - { execution: train3, type: INPUT, artifact: lib_torch_2_4 }
+  - { execution: train3, type: INPUT, artifact: lib_onnxrt_1_18 }
+  - { execution: train3, type: OUTPUT, artifact: model_v2_0_0 }
+  - { execution: eval3, type: INPUT, artifact: model_v2_0_0 }
+  - { execution: eval3, type: INPUT, artifact: ds_2025_10 }
+  - { execution: eval3, type: OUTPUT, artifact: eval_v20 }
+  - { execution: pack3, type: INPUT, artifact: model_v2_0_0 }
+  - { execution: pack3, type: OUTPUT, artifact: img_v20 }
+
+# 6) Associations/attributions (union)
+associations:
+  - { context: pipe1, execution: run1 }
+  - { context: pipe1, execution: run2 }
+  - { context: pipe2, execution: train1 }
+  - { context: pipe2, execution: train2 }
+  - { context: pipe2, execution: train3 }
+  - { context: proj, execution: train1 }
+  - { context: proj, execution: train2 }
+  - { context: proj, execution: train3 }
+attributions:
+  - { context: expA, artifact: model_v1 }
+  - { context: expB, artifact: model_v11 }
+  - { context: expJan, artifact: model_v1_0_0 }
+  - { context: expFeb, artifact: model_v1_1_0 }
+  - { context: expFeb, artifact: model_v2_0_0 }

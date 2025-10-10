@@ -20,6 +20,9 @@ function listJson(dir) { try { return fs.readdirSync(dir).filter(f => f.endsWith
 function relFromView(p) { return path.relative(OUTPUT_ROOT, p); }
 
 function buildGraph() {
+  function edgeExists(edges, from, to, title) {
+    return edges.some(e => e.from === from && e.to === to && e.title === title);
+  }
   const g = { nodes: {}, edges: [] };
   const details = {};
   const files = listJson(CX_DIR);
@@ -59,17 +62,29 @@ function buildGraph() {
       if (!bomRefToNode[targetRef]) continue;
       const comment = String(er.comment || '').toLowerCase();
       if (kind === 'model' && comment.includes('parent') && comment.includes('model')) {
-        g.edges.push({ from: bomRefToNode[targetRef], to: nodeId, color: '#f57c00', dashes: true, arrows: 'to', title: 'model_lineage' });
+        if (!edgeExists(g.edges, bomRefToNode[targetRef], nodeId, 'model_lineage')) {
+          g.edges.push({ from: bomRefToNode[targetRef], to: nodeId, color: '#f57c00', dashes: true, arrows: 'to', title: 'model_lineage' });
+        }
       } else if (kind === 'model' && comment.includes('child') && comment.includes('model')) {
-        g.edges.push({ from: nodeId, to: bomRefToNode[targetRef], color: '#f57c00', dashes: true, arrows: 'to', title: 'model_lineage' });
+        if (!edgeExists(g.edges, nodeId, bomRefToNode[targetRef], 'model_lineage')) {
+          g.edges.push({ from: nodeId, to: bomRefToNode[targetRef], color: '#f57c00', dashes: true, arrows: 'to', title: 'model_lineage' });
+        }
       } else if (kind === 'dataset' && comment.includes('parent') && comment.includes('dataset')) {
-        g.edges.push({ from: bomRefToNode[targetRef], to: nodeId, color: '#f57c00', dashes: true, arrows: 'to', title: 'dataset_lineage' });
+        if (!edgeExists(g.edges, bomRefToNode[targetRef], nodeId, 'dataset_lineage')) {
+          g.edges.push({ from: bomRefToNode[targetRef], to: nodeId, color: '#f57c00', dashes: true, arrows: 'to', title: 'dataset_lineage' });
+        }
       } else if (kind === 'dataset' && comment.includes('child') && comment.includes('dataset')) {
-        g.edges.push({ from: nodeId, to: bomRefToNode[targetRef], color: '#f57c00', dashes: true, arrows: 'to', title: 'dataset_lineage' });
+        if (!edgeExists(g.edges, nodeId, bomRefToNode[targetRef], 'dataset_lineage')) {
+          g.edges.push({ from: nodeId, to: bomRefToNode[targetRef], color: '#f57c00', dashes: true, arrows: 'to', title: 'dataset_lineage' });
+        }
       } else if (kind === 'model' && comment.includes('uses dataset')) {
-        g.edges.push({ from: nodeId, to: bomRefToNode[targetRef], color: '#c62828', arrows: 'to', title: 'uses_dataset' });
+        if (!edgeExists(g.edges, nodeId, bomRefToNode[targetRef], 'uses_dataset')) {
+          g.edges.push({ from: nodeId, to: bomRefToNode[targetRef], color: '#c62828', arrows: 'to', title: 'uses_dataset' });
+        }
       } else if (kind === 'dataset' && comment.includes('used by model')) {
-        g.edges.push({ from: bomRefToNode[targetRef], to: nodeId, color: '#c62828', arrows: 'to', title: 'uses_dataset' });
+        if (!edgeExists(g.edges, bomRefToNode[targetRef], nodeId, 'uses_dataset')) {
+          g.edges.push({ from: bomRefToNode[targetRef], to: nodeId, color: '#c62828', arrows: 'to', title: 'uses_dataset' });
+        }
       }
     }
     // Model dependencies (library edges)
@@ -102,6 +117,7 @@ function buildGraph() {
       }
     }
   }
+ 
   return { g, details };
 }
 
@@ -143,7 +159,7 @@ function makeHtml({ g, details }) {
     const container = document.getElementById('graph');
     const network = new vis.Network(container, { nodes: new vis.DataSet(DATA.nodes), edges: new vis.DataSet(DATA.edges) }, {
       interaction: { hover: true, dragNodes: true },
-      physics: {enabled: false},
+      physics: {enabled: true},
       edges: { smooth: { type: 'dynamic' } }
     });
     function showDetails(id){
