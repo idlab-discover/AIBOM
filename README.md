@@ -24,7 +24,7 @@ Outputs are written to `output/` with format-specific subfolders. For each run, 
   - `extracted_mlmd_multi.json` (multi-pipeline/combined)
 
 <p align="center">
-  <img alt="MLMD-BOM live viewer screenshot" src="./viewer-screenshot.png" width="900" />
+  <img alt="MLMD-BOM live viewer screenshot" src="./image.png" width="900" />
 </p>
 
 ---
