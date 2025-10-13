@@ -149,7 +149,7 @@ Each model and dataset is exported to its own BOM file (modelbom or databom). Wh
 
 ## Repository structure
 
-```text
+```bash
 app/
   Dockerfile
   requirements.txt
@@ -168,7 +168,7 @@ viewer/
     App.tsx
     main.tsx
   public/
-viewer_old/                      # deprecated (no instructions)
+viewer_old/                       # deprecated (no instructions)
 output/
   cyclonedx/
   extracted_mlmd.json
