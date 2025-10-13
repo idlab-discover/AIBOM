@@ -3,6 +3,16 @@
 
 **Proof of Concept:** Generate CycloneDX BOMs (modelboms and databoms) from ML Metadata (MLMD) with live interactive visualization.
 
+MLMD is a library for recording and retrieving metadata associated with machine learning workflows. It helps track artifacts, executions, and lineage information, enabling reproducibility and traceability in ML pipelines.  
+
+For more information, see the official ML Metadata repository: https://github.com/google/ml-metadata
+
+This project is designed to integrate with Kubeflow, an open-source machine learning platform built on Kubernetes. In standard Kubeflow deployments, Kubeflow Pipelines records metadata in an MLMD (ML Metadata) store by default if the metadata service is enabled and properly configured. This repository can then be used to extract that metadata and build and sign AI Bill of Materials (AIBOMs) based on pipelines provided by ML Engineers.
+
+For more information, see the official KubeFlow documentation: https://www.kubeflow.org/docs/
+
+This would enable full AI lifecycle and lineage tracking.
+
 ---
 
 ## Overview
