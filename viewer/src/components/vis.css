@@ -1,0 +1,7 @@
+.container { display: flex; height: 100vh; max-height: 100vh; }
+.graph { flex: 0 0 62vw; height: 100vh; max-height: 100vh; background: #fff; }
+.panel { flex: 1; border-left: 1px solid #ddd; background: #fff; padding: 10px; overflow: auto; color: #222; }
+.pre { background: #f8f8f8; border: 1px solid #eee; padding: 8px; white-space: pre-wrap; color: #111; }
+.links a { margin-right: 8px; }
+.refresh { background: #f5f5f5; border: 1px solid #ccc; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+.refresh:hover { background: #eee; }

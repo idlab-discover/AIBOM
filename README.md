@@ -15,141 +15,170 @@ This would enable full AI lifecycle and lineage tracking.
 
 ---
 
-## Overview
+## What you get
 
+- In-memory MLMD with multiple pipelines, models, datasets, dependencies
+- Extraction of model/dataset metadata with lineage and multi-pipeline relations
+- Export to CycloneDX (per model and per dataset)
+- Interactive viewer (Vite + React + vis-network)
 
-MLMD-BOM demonstrates how to:
-- Create an in-memory MLMD (ML Metadata) store with multiple pipelines, models, datasets, and dependencies.
-- Extract model, dataset, and dependency metadata, including lineage and multi-pipeline relations.
-- Export the metadata as Bill of Materials (BOM) files in CycloneDX format, as both modelboms and databoms.
-- Visualize the resulting graphs live in your browser, with auto-updating and interactive exploration.
+Outputs are written to `output/`:
 
-Outputs are written to `output/` with format-specific subfolders. For each run, you get:
-- Per-model CycloneDX BOMs in `output/cyclonedx/` (modelboms)
-- Per-dataset CycloneDX BOMs in `output/cyclonedx/` (databoms)
-- Four extracted MLMD JSONs in `output/`:
-  - `extracted_mlmd.json` (all)
-  - `extracted_mlmd_models.json` (models only)
-  - `extracted_mlmd_datasets.json` (datasets only)
-  - `extracted_mlmd_multi.json` (multi-pipeline/combined)
+- `output/cyclonedx/` — per-model and per-dataset CycloneDX JSON
+- `output/extracted_mlmd.json` — all
+- `output/extracted_mlmd_models.json` — models only
+- `output/extracted_mlmd_datasets.json` — datasets only
+- `output/extracted_mlmd_multi.json` — multi-pipeline/combined
 
-<p align="center">
-  <img alt="MLMD-BOM live viewer screenshot" src="./docs/img/image.png" width="900" />
-</p>
+![MLMD-BOM live viewer screenshot](./docs/img/image.png)
 
 ---
 
+## 1) Application (Generator)
 
-## Requirements
+### Requirements (Application)
 
 - Docker
 - Docker Compose
 
-No need to install Python or Node.js locally—everything runs in containers.
+### Usage (Application)
 
+Run the generator to produce BOMs into `output/` using Docker Compose.
 
-## Usage
-
-### Build and Run
-
-```bash
-docker compose up --build
-```
-
-This will:
-- Build the generator image (`mlmd-bom`) and the viewer image (`bom-viewer`)
-- Run the generator to produce BOMs into `output/`
-- Start a live viewer web app on [http://localhost:8080](http://localhost:8080)
-- Write files to `output/` (in your project directory), including:
-  - `extracted_mlmd.json` and `extracted_mlmd_multi.json`
-  - Per-model CycloneDX BOMs in `output/cyclonedx/`, e.g. `FakeNet-1.0.0.cyclonedx.json`
-  - Per-model SPDX 3.0 BOMs in `output/spdx/`, e.g. `FakeNet-1.0.0.spdx3.json`
-
-
-#### Environment Variables
-
-- `SCENARIO_YAML`: Path to a YAML file that defines the MLMD scenario to load. Defaults to `scenarios/demo-complex.yaml`. To use your own scenario, run:
-
-  ```bash
-  SCENARIO_YAML=scenarios/my-scenario.yaml docker compose up --build
-  ```
-
-- `EXTRACT_CONTEXT`: Filter which MLMD context to export (uses names from your scenario). For the demo scenario, try:
-  - Experiment contexts: `expA`, `expB`
-  - Pipeline context: `demo-pipeline`
-
-#### Logging (optional)
-
-- Python generator (`app/`):
-  - `LOG_LEVEL`: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: INFO)
-  - `LOG_FORMAT`: `plain` (default) or `json`
-- Node viewer (`viewer/`):
-  - `LOG_LEVEL`: debug, info, warn, error (default: info)
-  - `LOG_FORMAT`: `plain` (default) or `json`
-
-#### Examples
-
-- Default (loads the bundled demo scenario): run the compose command above and open [http://localhost:8080](http://localhost:8080)
-- Export only one experiment from the demo scenario: set `EXTRACT_CONTEXT=expA` and re-run the generator service; the viewer will auto-refresh when new BOMs are written.
-- Use your own scenario: set `SCENARIO_YAML=app/scenarios/my-scenario.yaml` and re-run the generator service.
-
-Enable verbose logging:
+Linux/macOS:
 
 ```bash
-LOG_LEVEL=DEBUG docker compose up --build
+docker-compose up --build
 ```
 
-Emit JSON logs for both services:
+Windows (PowerShell):
+
+```powershell
+docker-compose up --build
+```
+
+This will build and run the generator and write files under `output/`.
+
+### Environment variables (Application)
+
+You can control the generated data with these environment variables.
+
+- SCENARIO_YAML — Path to a YAML file that defines the MLMD scenario. Default: `scenarios/demo-complex.yaml`.
+- EXTRACT_CONTEXT — Filter which MLMD context to export (names come from the scenario). Examples: `expA`, `expB`, `demo-pipeline`.
+- LOG_LEVEL — Python generator log level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` (default: `INFO`).
+- LOG_FORMAT — Python generator log format: `plain` (default) or `json`.
+
+Linux/macOS (inline):
 
 ```bash
-LOG_FORMAT=json LOG_LEVEL=DEBUG docker compose up --build
+SCENARIO_YAML=scenarios/my-scenario.yaml EXTRACT_CONTEXT=expA docker-compose up --build
 ```
 
+Windows (PowerShell):
 
-### Visualize the BOMs (Live Viewer)
-
-- Open [http://localhost:8080](http://localhost:8080) for the combined view (CycloneDX modelboms and databoms).
-- Click a node to see its CycloneDX JSON in the side panel; links let you open the full BOM files.
-- Double‑click a model or dataset node to open its full BOM.
-- Nodes are draggable; dependencies cluster around their model; shared dependencies appear between models; lineage edges are dashed orange, dataset relations are red.
-
-The viewer watches `output/cyclonedx` and updates automatically when new files are created or existing files change.
-
-
-
-## Lineage and Relationships
-
-Each model and dataset is exported to its own BOM file (modelbom or databom). The newer model version links to its immediate parent when both versions are present. If filtering results in a single version, the BOM is emitted without lineage.
-
-- **CycloneDX (specVersion 1.6):**
-  - Dependencies are represented in the dependency graph.
-  - Lineage is expressed via an externalReference of type `bom` on the model component using a BOM-Link URN pointing to the parent BOM.
-  - Model-dataset relations are also encoded as externalReferences.
-
-docker-compose.yml     # Docker Compose orchestration
-
-## Project Structure
-
+```powershell
+$env:SCENARIO_YAML="scenarios/my-scenario.yaml"
+$env:EXTRACT_CONTEXT="expA"
+docker-compose up --build
 ```
+
+Windows (CMD):
+
+```cmd
+set SCENARIO_YAML=scenarios\my-scenario.yaml
+set EXTRACT_CONTEXT=expA
+docker-compose up --build
+```
+
+Logging examples (Linux/macOS):
+
+```bash
+# Linux/macOS
+LOG_LEVEL=DEBUG docker-compose up --build
+
+# JSON logs
+LOG_FORMAT=json LOG_LEVEL=DEBUG docker-compose up --build
+```
+
+### Try these examples (Application)
+
+- Default demo (no env vars): just run `docker-compose up --build` and then start the viewer.
+- Use your own scenario: set `SCENARIO_YAML=scenarios/my-scenario.yaml`.
+- Export a single context: set `EXTRACT_CONTEXT=expA`.
+- Enable verbose logs: set `LOG_LEVEL=DEBUG`.
+
+---
+
+## 2) Viewer (Vite + React)
+
+### Requirements (Viewer)
+
+- Node.js (v18+ recommended)
+- npm
+
+### Usage (Viewer)
+
+Start the viewer locally (reads from `../output/cyclonedx/`):
+
+```bash
+cd viewer
+npm install
+npm run dev
+# Open http://localhost:5173
+```
+
+Features:
+
+- Click a node to see CycloneDX JSON in the side panel; open full BOM files via links
+- Double‑click a model or dataset node to open its full BOM in a new tab
+- Drag nodes and toggle physics on/off
+- Refresh button to re-read `output/cyclonedx` when files change
+
+---
+
+## Lineage and relationships
+
+Each model and dataset is exported to its own BOM file (modelbom or databom). When multiple versions exist, a newer model links to its parent via BOM-Link; a single version will be emitted without lineage references.
+
+- CycloneDX (specVersion 1.6):
+  - Dependencies via the dependency graph
+  - Lineage via `externalReferences` of type `bom` (BOM-Link URN)
+  - Model–dataset relations via `externalReferences`
+
+---
+
+## Repository structure
+
+```text
 app/
-  Dockerfile           # App container image
-  requirements.txt     # App dependencies
-  main.py              # Main entry point
-  mlmd_support.py      # MLMD utility functions
-  extraction.py        # Extract model + dependencies from MLMD
-  cyclonedx_gen.py     # CycloneDX BOM generation (JSON + XML)
-  spdx3_gen.py         # SPDX 3.0 JSON generation (per model) (currently not used)
+  Dockerfile
+  requirements.txt
+  main.py
+  mlmd_support.py
+  extraction.py
+  cyclonedx_gen.py
+  spdx3_gen.py                    # currently not used
 viewer/
-  Dockerfile           # Viewer container image (Node)
-  package.json         # Viewer web app dependencies and scripts
-  server.js            # Live viewer server (Express + chokidar)
-  build.js             # Static builder (kept for reference)
+  package.json
+  vite.config.ts
+  server/graphBuilder.ts          # graph builder used by dev server
+  src/
+    components/VisNetwork.tsx
+    components/vis.css
+    App.tsx
+    main.tsx
+  public/
+viewer_old/                      # deprecated (no instructions)
 output/
-  cyclonedx/           # Per-model CycloneDX BOMs
-  spdx/                # Per-model SPDX 3.0 BOMs
-docker-compose.yml     # Docker Compose orchestration
+  cyclonedx/
+  extracted_mlmd.json
+  extracted_mlmd_models.json
+  extracted_mlmd_datasets.json
+  extracted_mlmd_multi.json
+docker-compose.yml
 ```
 
+---
 
 ## License
 

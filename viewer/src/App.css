@@ -1,0 +1,8 @@
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden; /* prevent page scroll; panel will handle its own scroll */
+  max-width: none;
+  text-align: initial;
+}
