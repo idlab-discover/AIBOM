@@ -169,8 +169,12 @@ function makeHtml({ g, details }) {
       var bl = document.getElementById('bomLinks');
       if(bl){
         var links = [];
-        if(d.cx_file)
+        // Only show the CycloneDX link for model or dataset nodes (not dependencies/libraries)
+        // We can check by color or shape: model (#1976d2, dot), dataset (#2e7d32, dot)
+        const node = (DATA.nodes||[]).find(n => n.id === id);
+        if (d.cx_file && node && node.shape === 'dot' && (node.color === '#1976d2' || node.color === '#2e7d32')) {
           links.push('<a target="_blank" href="'+('/output/'+d.cx_file)+'">Open CycloneDX</a>');
+        }
         bl.innerHTML = links.join(' ');
       }
     }
