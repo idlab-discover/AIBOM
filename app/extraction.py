@@ -16,6 +16,30 @@ def extract_model_deps_and_datasets(
     Extract all models and datasets (optionally filtered by context).
     Returns a dict with keys: 'models', 'datasets'.
     Models do NOT include datasets as dependencies.
+
+    Return structure:
+    {
+        "models": [<model1>, <model2>, ...], (List[Dict[str, Any]])
+        "datasets": [<dataset1>, <dataset2>, ...] (List[Dict[str, Any]])
+    }
+    where each <model> (Dict[str, Any]) is a dict, e.g.,:
+    {
+        "model_name": str,
+        "version": str,
+        "framework": str,
+        "format": str,
+        "uri": str,
+        "properties": {<other properties>},
+        "dependencies": [
+            {
+                "name": str,
+                "version": str,
+                "purl": str,
+                "uri": str,
+                "type": str,
+                "properties": {<other properties>}
+            }, ...
+        ],  
     """
     # Simple cache for type_id -> type_name to reduce RPCs
     type_name_cache: Dict[int, str] = {}

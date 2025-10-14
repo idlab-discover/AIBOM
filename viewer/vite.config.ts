@@ -1,11 +1,11 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react-swc'
-import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { buildGraph, listJson, readJson } from './server/graphBuilder.js'
-
+import { buildGraph } from './server/graphBuilder.js'
+import path from 'node:path';
+import logger from './server/logger.js';
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -35,12 +35,14 @@ function graphApiPlugin(): Plugin {
     name: 'mlmd-graph-api',
     configureServer(server) {
       server.middlewares.use('/api/cx-graph', (_req: IncomingMessage, res: ServerResponse) => {
+        logger.info('API /api/cx-graph called');
         try {
           const data = buildGraph(outputRoot)
           res.setHeader('Cache-Control', 'no-store')
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(data))
         } catch (e: any) {
+          logger.error(`API /api/cx-graph error: ${String(e?.message || e)}`);
           res.statusCode = 500
           res.end(JSON.stringify({ error: String(e?.message || e) }))
         }
@@ -49,12 +51,14 @@ function graphApiPlugin(): Plugin {
     },
     configurePreviewServer(server) {
       server.middlewares.use('/api/cx-graph', (_req: IncomingMessage, res: ServerResponse) => {
+        logger.info('API /api/cx-graph (preview) called');
         try {
           const data = buildGraph(outputRoot)
           res.setHeader('Cache-Control', 'no-store')
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(data))
         } catch (e: any) {
+          logger.error(`API /api/cx-graph (preview) error: ${String(e?.message || e)}`);
           res.statusCode = 500
           res.end(JSON.stringify({ error: String(e?.message || e) }))
         }

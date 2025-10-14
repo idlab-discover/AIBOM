@@ -1,12 +1,15 @@
 import path from 'node:path';
 import fs from 'node:fs';
 
+import logger from './logger';
+
 export function listJson(dir: string): string[] {
   try { return fs.readdirSync(dir).filter(f => f.endsWith('.json')).map(f => path.join(dir, f)); } catch { return []; }
 }
 export function readJson(p: string): any | null { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } }
 
 export function buildGraph(outputRoot: string) {
+  logger.info(`[graphBuilder] buildGraph called with outputRoot: ${outputRoot}`);
   const cxDir = path.join(outputRoot, 'cyclonedx');
   function edgeExists(edges: any[], from: string, to: string, title: string) {
     return edges.some(e => e.from === from && e.to === to && e.title === title);
@@ -20,8 +23,9 @@ export function buildGraph(outputRoot: string) {
 
   // Pass 1: create nodes and index by bom-ref
   for (const fp of files) {
-    const bom = readJson(fp); if (!bom) continue;
     const rel = relFromView(fp);
+    logger.info(`[graphBuilder] Processing BOM file: ${rel}`);
+    const bom = readJson(fp); if (!bom) continue;
     const metaComp = (bom.metadata || {}).component;
     if (!metaComp || !metaComp['bom-ref']) continue;
     const bomRef = metaComp['bom-ref'];

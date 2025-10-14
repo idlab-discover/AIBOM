@@ -10,15 +10,20 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@popperjs/core": "^2.11.8",
     "@types/serve-static": "^1.15.9",
+    "bootstrap": "^5.3.8",
+    "bootstrap-icons": "^1.13.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "serve-static": "^2.2.0",
     "vis-data": "^7.1.10",
-    "vis-network": "^9.1.13"
+    "vis-network": "^9.1.13",
+    "winston": "^3.18.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
+    "@types/bootstrap": "^5.2.10",
     "@types/node": "^24.6.0",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
