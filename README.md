@@ -1,5 +1,7 @@
 # MLMD-BOM
 
+[Needs update]
+
 **Proof of Concept:** Generate CycloneDX BOMs (modelboms and databoms) from ML Metadata (MLMD) with live interactive visualization.
 
 MLMD is a library for recording and retrieving metadata associated with machine learning workflows. It helps track artifacts, executions, and lineage information, enabling reproducibility and traceability in ML pipelines.  
