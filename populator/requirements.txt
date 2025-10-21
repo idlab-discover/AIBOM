@@ -1,2 +1,3 @@
 ml-metadata==1.14.0; python_version < "3.12"
 PyYAML>=6.0
+mysql-connector-python>=8.0

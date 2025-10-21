@@ -1,5 +1,4 @@
 
-import argparse
 import os
 import logging
 import json
@@ -67,33 +66,98 @@ def setup_logging() -> None:
 
 
 def connect_mlmd() -> "metadata_store.MetadataStore":
+    backend = os.environ.get("MLMD_BACKEND", "mysql").lower()
     cfg = metadata_store_pb2.ConnectionConfig()
-    cfg.sqlite.filename_uri = "/mlmd-db/mlmd.db"
-    store = metadata_store.MetadataStore(cfg)
-    logger.info(f"connected to MLMD (sqlite file: {cfg.sqlite.filename_uri})")
+
+    if backend == "sqlite":
+        sqlite_path = os.environ.get("MLMD_SQLITE_PATH", "/mlmd-db/mlmd.db")
+        cfg.sqlite.filename_uri = sqlite_path
+        store = metadata_store.MetadataStore(
+            cfg, enable_upgrade_migration=True)
+        logger.info("connected to MLMD (sqlite)",
+                    extra={"sqlite_path": sqlite_path})
+        return store
+
+    host = os.environ.get("MLMD_HOST", "mysql")
+    port = int(os.environ.get("MLMD_PORT", "3306"))
+    database = os.environ.get("MLMD_DATABASE", "mlmd")
+    user = os.environ.get("MLMD_USER", "mlmd")
+    password = os.environ.get("MLMD_PASSWORD", "mlmdpass")
+
+    cfg.mysql.host = host
+    cfg.mysql.port = port
+    cfg.mysql.database = database
+    cfg.mysql.user = user
+    cfg.mysql.password = password
+
+    store = metadata_store.MetadataStore(cfg, enable_upgrade_migration=True)
+    logger.info(
+        "connected to MLMD (mysql)",
+        extra={"host": host, "port": port, "database": database, "user": user},
+    )
     return store
 
 
 def main():
     setup_logging()
 
-    # Always clear the persistent sqlite DB before populating (clear contents, do not remove file because then we need to reconnect each time for debugging)
-    db_path = "/mlmd-db/mlmd.db"
-    try:
-        import sqlite3
-        if os.path.exists(db_path):
-            with sqlite3.connect(db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("PRAGMA writable_schema = 1;")
-                cursor.execute(
-                    "DELETE FROM sqlite_master WHERE type IN ('table', 'index', 'trigger');")
-                cursor.execute("PRAGMA writable_schema = 0;")
-                conn.commit()
-            logger.info("cleared existing MLMD sqlite DB contents",
-                        extra={"db_path": db_path})
-    except Exception as e:
-        logger.warning("failed to clear existing DB", extra={
-                       "db_path": db_path, "error": str(e)})
+    backend = os.environ.get("MLMD_BACKEND", "mysql").lower()
+    if os.environ.get("MLMD_RESET_DB", "no").lower() in {"1", "true", "yes"}:
+        if backend == "mysql":
+            try:
+                import mysql.connector  # type: ignore
+                host = os.environ.get("MLMD_HOST", "mysql")
+                port = int(os.environ.get("MLMD_PORT", "3306"))
+                database = os.environ.get("MLMD_DATABASE", "mlmd")
+                # Prefer root creds if provided for DROP/CREATE DATABASE
+                root_password = os.environ.get(
+                    "MLMD_ROOT_PASSWORD") or os.environ.get("MYSQL_ROOT_PASSWORD")
+                if root_password:
+                    user = "root"
+                    password = root_password
+                else:
+                    user = os.environ.get("MLMD_USER", "mlmd")
+                    password = os.environ.get("MLMD_PASSWORD", "mlmdpass")
+
+                conn = mysql.connector.connect(
+                    host=host, port=port, user=user, password=password)
+                conn.autocommit = True
+                cur = conn.cursor()
+                # Ensure user exists with native password (for MLMD compatibility with libmysqlclient)
+                cur.execute(
+                    "CREATE USER IF NOT EXISTS 'mlmd'@'%' IDENTIFIED WITH mysql_native_password BY 'mlmdpass';")
+                cur.execute(
+                    "ALTER USER 'mlmd'@'%' IDENTIFIED WITH mysql_native_password BY 'mlmdpass';")
+                cur.execute("FLUSH PRIVILEGES;")
+                cur.execute(f"DROP DATABASE IF EXISTS `{database}`;")
+                cur.execute(
+                    f"CREATE DATABASE `{database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;")
+                cur.execute(
+                    "GRANT ALL PRIVILEGES ON `{db}`.* TO 'mlmd'@'%';".format(db=database))
+                cur.execute("FLUSH PRIVILEGES;")
+                cur.close()
+                conn.close()
+                logger.info("reset MySQL database for MLMD", extra={
+                            "database": database, "host": host, "port": port})
+            except Exception as e:
+                logger.warning(f"failed to reset MySQL database: {e}")
+        elif backend == "sqlite":
+            sqlite_path = os.environ.get(
+                "MLMD_SQLITE_PATH", "/mlmd-sqlite/mlmd.db")
+            try:
+                import sqlite3
+                if os.path.exists(sqlite_path):
+                    with sqlite3.connect(sqlite_path) as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("PRAGMA writable_schema = 1;")
+                        cursor.execute(
+                            "DELETE FROM sqlite_master WHERE type IN ('table', 'index', 'trigger');")
+                        cursor.execute("PRAGMA writable_schema = 0;")
+                        conn.commit()
+                    logger.info("cleared existing SQLite DB contents",
+                                extra={"sqlite_path": sqlite_path})
+            except Exception as e:
+                logger.warning(f"failed to clear SQLite DB file: {e}")
 
     store = connect_mlmd()
 
