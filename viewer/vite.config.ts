@@ -6,6 +6,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { buildGraph } from './server/graphBuilder.js'
 import path from 'node:path';
 import logger from './server/logger.js';
+import tailwindcss from '@tailwindcss/vite'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -69,7 +70,7 @@ function graphApiPlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), graphApiPlugin()],
+  plugins: [react(), graphApiPlugin(), tailwindcss()],
   server: {
     fs: { allow: [path.resolve(__dirname, '..')] },
     port: 5173,

@@ -294,6 +294,7 @@ def add_dataset_lineage_relation(parent_bom: Bom, child_bom: Bom):
 
     parent_comp = find_dataset_component(parent_bom)
     child_comp = find_dataset_component(child_bom)
+
     if not parent_comp or not child_comp:
         logger.warning("could not locate dataset components for lineage", extra={
                        "has_parent": bool(parent_comp), "has_child": bool(child_comp)})
@@ -304,6 +305,12 @@ def add_dataset_lineage_relation(parent_bom: Bom, child_bom: Bom):
     if not parent_ref or not child_ref:
         logger.warning("missing bom-ref for dataset lineage", extra={
                        "parent_ref": bool(parent_ref), "child_ref": bool(child_ref)})
+        return
+
+    # Prevent self-referencing lineage
+    if parent_ref == child_ref:
+        logger.warning("Skipping self-referencing dataset lineage", extra={
+            "bom_ref": parent_ref})
         return
 
     try:

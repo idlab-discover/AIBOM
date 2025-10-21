@@ -1,0 +1,1334 @@
+# Ultra-Complex Mega MLOps Scenario
+# This scenario simulates a massive, multi-team, multi-domain, multi-pipeline ML platform with hundreds of entities and relationships.
+
+# 1) Types (union of all previous, plus more)
+types:
+  artifact:
+    Model:
+      properties:
+        name: STRING
+        version: STRING
+        framework: STRING
+        format: STRING
+        accuracy: DOUBLE
+        git_commit: STRING
+        metrics_auc: DOUBLE
+        metrics_f1: DOUBLE
+        metrics_bleu: DOUBLE
+        metrics_rouge: DOUBLE
+        metrics_mae: DOUBLE
+        metrics_rmse: DOUBLE
+    Library:
+      properties:
+        name: STRING
+        version: STRING
+        purl: STRING
+    Dataset:
+      properties:
+        name: STRING
+        split: STRING
+        version: STRING
+        rows: INT
+        schema: STRING
+        domain: STRING
+    FeatureTable:
+      properties:
+        name: STRING
+        version: STRING
+        source: STRING
+    PreprocessCode:
+      properties:
+        name: STRING
+        version: STRING
+        git_commit: STRING
+        entrypoint: STRING
+    ContainerImage:
+      properties:
+        name: STRING
+        tag: STRING
+        digest: STRING
+    EvaluationReport:
+      properties:
+        name: STRING
+        version: STRING
+        auc: DOUBLE
+        f1: DOUBLE
+        bleu: DOUBLE
+        rouge: DOUBLE
+        mae: DOUBLE
+        rmse: DOUBLE
+    EmbeddingModel:
+      properties:
+        name: STRING
+        version: STRING
+        framework: STRING
+        dimension: INT
+    Tokenizer:
+      properties:
+        name: STRING
+        version: STRING
+        type: STRING
+  execution:
+    TrainingRun:
+      properties:
+        pipeline: STRING
+        state: STRING
+        run_id: STRING
+        epochs: INT
+        learning_rate: DOUBLE
+        seed: INT
+    DataIngestion:
+      properties:
+        pipeline: STRING
+        state: STRING
+        run_id: STRING
+    FeatureEngineering:
+      properties:
+        pipeline: STRING
+        state: STRING
+        run_id: STRING
+    Evaluation:
+      properties:
+        pipeline: STRING
+        state: STRING
+        run_id: STRING
+    Packaging:
+      properties:
+        pipeline: STRING
+        state: STRING
+        run_id: STRING
+    HyperparameterTuning:
+      properties:
+        pipeline: STRING
+        state: STRING
+        run_id: STRING
+        search_space: STRING
+        best_score: DOUBLE
+    BatchInference:
+      properties:
+        pipeline: STRING
+        state: STRING
+        run_id: STRING
+        batch_size: INT
+    OnlineServing:
+      properties:
+        pipeline: STRING
+        state: STRING
+        run_id: STRING
+        endpoint: STRING
+  context:
+    Project:
+      properties:
+        key: STRING
+        owner: STRING
+    Experiment:
+      properties:
+        note: STRING
+    Pipeline:
+      properties:
+        owner: STRING
+    Environment:
+      properties:
+        name: STRING
+    Team:
+      properties:
+        name: STRING
+        lead: STRING
+    BusinessUnit:
+      properties:
+        name: STRING
+        vp: STRING
+
+# 2) Contexts (10+ projects, 10+ teams, 10+ pipelines, 10+ envs, 10+ BUs, 20+ experiments)
+contexts:
+  # Teams
+  team_vision:
+    type: Team
+    name: vision
+    properties: { name: vision, lead: alice }
+  team_nlp:
+    type: Team
+    name: nlp
+    properties: { name: nlp, lead: bob }
+  team_tabular:
+    type: Team
+    name: tabular
+    properties: { name: tabular, lead: carol }
+  team_timeseries:
+    type: Team
+    name: timeseries
+    properties: { name: timeseries, lead: dave }
+  team_recsys:
+    type: Team
+    name: recsys
+    properties: { name: recsys, lead: eve }
+  team_qa:
+    type: Team
+    name: qa
+    properties: { name: qa, lead: frank }
+  team_prod:
+    type: Team
+    name: prod
+    properties: { name: prod, lead: grace }
+  team_ops:
+    type: Team
+    name: ops
+    properties: { name: ops, lead: heidi }
+  team_analytics:
+    type: Team
+    name: analytics
+    properties: { name: analytics, lead: ivan }
+  team_data:
+    type: Team
+    name: data
+    properties: { name: data, lead: judy }
+  # Business Units
+  bu_retail:
+    type: BusinessUnit
+    name: retail
+    properties: { name: retail, vp: "VP Retail" }
+  bu_finance:
+    type: BusinessUnit
+    name: finance
+    properties: { name: finance, vp: "VP Finance" }
+  bu_health:
+    type: BusinessUnit
+    name: health
+    properties: { name: health, vp: "VP Health" }
+  bu_industry:
+    type: BusinessUnit
+    name: industry
+    properties: { name: industry, vp: "VP Industry" }
+  bu_tech:
+    type: BusinessUnit
+    name: tech
+    properties: { name: tech, vp: "VP Tech" }
+  bu_energy:
+    type: BusinessUnit
+    name: energy
+    properties: { name: energy, vp: "VP Energy" }
+  bu_media:
+    type: BusinessUnit
+    name: media
+    properties: { name: media, vp: "VP Media" }
+  bu_gov:
+    type: BusinessUnit
+    name: gov
+    properties: { name: gov, vp: "VP Gov" }
+  bu_edu:
+    type: BusinessUnit
+    name: edu
+    properties: { name: edu, vp: "VP Edu" }
+  bu_transport:
+    type: BusinessUnit
+    name: transport
+    properties: { name: transport, vp: "VP Transport" }
+  # Projects (10+)
+  proj_vision:
+    type: Project
+    name: vision-ml
+    properties: { key: VISION, owner: team_vision }
+  proj_nlp:
+    type: Project
+    name: nlp-ml
+    properties: { key: NLP, owner: team_nlp }
+  proj_tabular:
+    type: Project
+    name: tabular-ml
+    properties: { key: TAB, owner: team_tabular }
+  proj_timeseries:
+    type: Project
+    name: timeseries-ml
+    properties: { key: TS, owner: team_timeseries }
+  proj_recsys:
+    type: Project
+    name: recsys-ml
+    properties: { key: REC, owner: team_recsys }
+  proj_qa:
+    type: Project
+    name: qa-ml
+    properties: { key: QA, owner: team_qa }
+  proj_prod:
+    type: Project
+    name: prod-ml
+    properties: { key: PROD, owner: team_prod }
+  proj_ops:
+    type: Project
+    name: ops-ml
+    properties: { key: OPS, owner: team_ops }
+  proj_analytics:
+    type: Project
+    name: analytics-ml
+    properties: { key: ANA, owner: team_analytics }
+  proj_data:
+    type: Project
+    name: data-ml
+    properties: { key: DATA, owner: team_data }
+  # Pipelines (10+)
+  pipe_vision:
+    type: Pipeline
+    name: vision-pipeline
+    properties: { owner: team_vision }
+  pipe_nlp:
+    type: Pipeline
+    name: nlp-pipeline
+    properties: { owner: team_nlp }
+  pipe_tabular:
+    type: Pipeline
+    name: tabular-pipeline
+    properties: { owner: team_tabular }
+  pipe_timeseries:
+    type: Pipeline
+    name: timeseries-pipeline
+    properties: { owner: team_timeseries }
+  pipe_recsys:
+    type: Pipeline
+    name: recsys-pipeline
+    properties: { owner: team_recsys }
+  pipe_qa:
+    type: Pipeline
+    name: qa-pipeline
+    properties: { owner: team_qa }
+  pipe_prod:
+    type: Pipeline
+    name: prod-pipeline
+    properties: { owner: team_prod }
+  pipe_ops:
+    type: Pipeline
+    name: ops-pipeline
+    properties: { owner: team_ops }
+  pipe_analytics:
+    type: Pipeline
+    name: analytics-pipeline
+    properties: { owner: team_analytics }
+  pipe_data:
+    type: Pipeline
+    name: data-pipeline
+    properties: { owner: team_data }
+  # Environments (10+)
+  env_dev:
+    type: Environment
+    name: dev
+    properties: { name: dev }
+  env_test:
+    type: Environment
+    name: test
+    properties: { name: test }
+  env_staging:
+    type: Environment
+    name: staging
+    properties: { name: staging }
+  env_prod:
+    type: Environment
+    name: prod
+    properties: { name: prod }
+  env_canary:
+    type: Environment
+    name: canary
+    properties: { name: canary }
+  env_shadow:
+    type: Environment
+    name: shadow
+    properties: { name: shadow }
+  env_perf:
+    type: Environment
+    name: perf
+    properties: { name: perf }
+  env_demo:
+    type: Environment
+    name: demo
+    properties: { name: demo }
+  env_qa:
+    type: Environment
+    name: qa
+    properties: { name: qa }
+  env_ops:
+    type: Environment
+    name: ops
+    properties: { name: ops }
+  # Experiments (20+)
+  exp_vision_jan:
+    type: Experiment
+    name: vision-jan
+    properties: { note: "Vision January baseline" }
+  exp_vision_feb:
+    type: Experiment
+    name: vision-feb
+    properties: { note: "Vision February improvements" }
+  exp_nlp_jan:
+    type: Experiment
+    name: nlp-jan
+    properties: { note: "NLP January baseline" }
+  exp_nlp_feb:
+    type: Experiment
+    name: nlp-feb
+    properties: { note: "NLP February improvements" }
+  exp_tabular_jan:
+    type: Experiment
+    name: tabular-jan
+    properties: { note: "Tabular January baseline" }
+  exp_tabular_feb:
+    type: Experiment
+    name: tabular-feb
+    properties: { note: "Tabular February improvements" }
+  exp_timeseries_jan:
+    type: Experiment
+    name: timeseries-jan
+    properties: { note: "Timeseries January baseline" }
+  exp_timeseries_feb:
+    type: Experiment
+    name: timeseries-feb
+    properties: { note: "Timeseries February improvements" }
+  exp_recsys_jan:
+    type: Experiment
+    name: recsys-jan
+    properties: { note: "Recsys January baseline" }
+  exp_recsys_feb:
+    type: Experiment
+    name: recsys-feb
+    properties: { note: "Recsys February improvements" }
+  exp_qa_jan:
+    type: Experiment
+    name: qa-jan
+    properties: { note: "QA January baseline" }
+  exp_qa_feb:
+    type: Experiment
+    name: qa-feb
+    properties: { note: "QA February improvements" }
+  exp_prod_jan:
+    type: Experiment
+    name: prod-jan
+    properties: { note: "Prod January baseline" }
+  exp_prod_feb:
+    type: Experiment
+    name: prod-feb
+    properties: { note: "Prod February improvements" }
+  exp_ops_jan:
+    type: Experiment
+    name: ops-jan
+    properties: { note: "Ops January baseline" }
+  exp_ops_feb:
+    type: Experiment
+    name: ops-feb
+    properties: { note: "Ops February improvements" }
+  exp_analytics_jan:
+    type: Experiment
+    name: analytics-jan
+    properties: { note: "Analytics January baseline" }
+  exp_analytics_feb:
+    type: Experiment
+    name: analytics-feb
+    properties: { note: "Analytics February improvements" }
+  exp_data_jan:
+    type: Experiment
+    name: data-jan
+    properties: { note: "Data January baseline" }
+  exp_data_feb:
+    type: Experiment
+    name: data-feb
+    properties: { note: "Data February improvements" }
+
+
+# 3) Artifacts (100+ diverse, cross-domain)
+artifacts:
+  # Timeseries domain
+  timeseries_data_train_1:
+    type: Dataset
+    uri: data://timeseries/train-2025-01
+    properties: { name: timeseries-data, split: train, version: 2025-01, rows: 150000, schema: v4, domain: timeseries }
+    contexts: [pipe_timeseries]
+  timeseries_data_train_2:
+    type: Dataset
+    uri: data://timeseries/train-2025-02
+    properties: { name: timeseries-data, split: train, version: 2025-02, rows: 170000, schema: v4, domain: timeseries }
+    contexts: [pipe_timeseries]
+  timeseries_data_val_1:
+    type: Dataset
+    uri: data://timeseries/val-2025-01
+    properties: { name: timeseries-data, split: val, version: 2025-01, rows: 30000, schema: v4, domain: timeseries }
+    contexts: [pipe_timeseries]
+  timeseries_data_val_2:
+    type: Dataset
+    uri: data://timeseries/val-2025-02
+    properties: { name: timeseries-data, split: val, version: 2025-02, rows: 35000, schema: v4, domain: timeseries }
+    contexts: [pipe_timeseries]
+  timeseries_model_prophet_v1:
+    type: Model
+    uri: models://timeseries/prophet/1.0.0
+    properties: { name: prophet, version: 1.0.0, framework: prophet, format: binary, accuracy: 0.87, git_commit: 7g8h9i, metrics_auc: 0.88, metrics_f1: 0.85, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0.15, metrics_rmse: 0.25 }
+    contexts: [pipe_timeseries]
+  timeseries_model_prophet_v2:
+    type: Model
+    uri: models://timeseries/prophet/2.0.0
+    properties: { name: prophet, version: 2.0.0, framework: prophet, format: binary, accuracy: 0.89, git_commit: 8h9i0j, metrics_auc: 0.90, metrics_f1: 0.87, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0.13, metrics_rmse: 0.22 }
+    contexts: [pipe_timeseries]
+  timeseries_lib_prophet:
+    type: Library
+    uri: pkg://prophet/1.1.0
+    properties: { name: prophet, version: 1.1.0, purl: pkg:pypi/prophet@1.1.0 }
+  timeseries_eval_prophet_v1:
+    type: EvaluationReport
+    uri: eval://timeseries/prophet/1.0.0
+    properties: { name: eval-prophet, version: 1.0.0, auc: 0.88, f1: 0.85, bleu: 0, rouge: 0, mae: 0.15, rmse: 0.25 }
+    contexts: [pipe_timeseries]
+  timeseries_eval_prophet_v2:
+    type: EvaluationReport
+    uri: eval://timeseries/prophet/2.0.0
+    properties: { name: eval-prophet, version: 2.0.0, auc: 0.90, f1: 0.87, bleu: 0, rouge: 0, mae: 0.13, rmse: 0.22 }
+    contexts: [pipe_timeseries]
+  # RecSys domain
+  recsys_data_train_1:
+    type: Dataset
+    uri: data://recsys/train-2025-01
+    properties: { name: recsys-data, split: train, version: 2025-01, rows: 180000, schema: v5, domain: recsys }
+    contexts: [pipe_recsys]
+  recsys_data_train_2:
+    type: Dataset
+    uri: data://recsys/train-2025-02
+    properties: { name: recsys-data, split: train, version: 2025-02, rows: 200000, schema: v5, domain: recsys }
+    contexts: [pipe_recsys]
+  recsys_data_val_1:
+    type: Dataset
+    uri: data://recsys/val-2025-01
+    properties: { name: recsys-data, split: val, version: 2025-01, rows: 40000, schema: v5, domain: recsys }
+    contexts: [pipe_recsys]
+  recsys_data_val_2:
+    type: Dataset
+    uri: data://recsys/val-2025-02
+    properties: { name: recsys-data, split: val, version: 2025-02, rows: 45000, schema: v5, domain: recsys }
+    contexts: [pipe_recsys]
+  recsys_model_surprise_v1:
+    type: Model
+    uri: models://recsys/surprise/1.0.0
+    properties: { name: surprise, version: 1.0.0, framework: surprise, format: binary, accuracy: 0.86, git_commit: 9i0j1k, metrics_auc: 0.87, metrics_f1: 0.84, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0.18, metrics_rmse: 0.28 }
+    contexts: [pipe_recsys]
+  recsys_model_surprise_v2:
+    type: Model
+    uri: models://recsys/surprise/2.0.0
+    properties: { name: surprise, version: 2.0.0, framework: surprise, format: binary, accuracy: 0.88, git_commit: 0j1k2l, metrics_auc: 0.89, metrics_f1: 0.86, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0.16, metrics_rmse: 0.24 }
+    contexts: [pipe_recsys]
+  recsys_lib_surprise:
+    type: Library
+    uri: pkg://surprise/1.2.0
+    properties: { name: surprise, version: 1.2.0, purl: pkg:pypi/surprise@1.2.0 }
+  recsys_eval_surprise_v1:
+    type: EvaluationReport
+    uri: eval://recsys/surprise/1.0.0
+    properties: { name: eval-surprise, version: 1.0.0, auc: 0.87, f1: 0.84, bleu: 0, rouge: 0, mae: 0.18, rmse: 0.28 }
+    contexts: [pipe_recsys]
+  recsys_eval_surprise_v2:
+    type: EvaluationReport
+    uri: eval://recsys/surprise/2.0.0
+    properties: { name: eval-surprise, version: 2.0.0, auc: 0.89, f1: 0.86, bleu: 0, rouge: 0, mae: 0.16, rmse: 0.24 }
+    contexts: [pipe_recsys]
+  # QA domain
+  qa_data_train_1:
+    type: Dataset
+    uri: data://qa/train-2025-01
+    properties: { name: qa-data, split: train, version: 2025-01, rows: 160000, schema: v6, domain: qa }
+    contexts: [pipe_qa]
+  qa_data_train_2:
+    type: Dataset
+    uri: data://qa/train-2025-02
+    properties: { name: qa-data, split: train, version: 2025-02, rows: 180000, schema: v6, domain: qa }
+    contexts: [pipe_qa]
+  qa_data_val_1:
+    type: Dataset
+    uri: data://qa/val-2025-01
+    properties: { name: qa-data, split: val, version: 2025-01, rows: 35000, schema: v6, domain: qa }
+    contexts: [pipe_qa]
+  qa_data_val_2:
+    type: Dataset
+    uri: data://qa/val-2025-02
+    properties: { name: qa-data, split: val, version: 2025-02, rows: 37000, schema: v6, domain: qa }
+    contexts: [pipe_qa]
+  qa_model_transformers_v1:
+    type: Model
+    uri: models://qa/transformers/1.0.0
+    properties: { name: transformers, version: 1.0.0, framework: transformers, format: binary, accuracy: 0.90, git_commit: 1k2l3m, metrics_auc: 0.91, metrics_f1: 0.89, metrics_bleu: 0.85, metrics_rouge: 0.83, metrics_mae: 0.11, metrics_rmse: 0.18 }
+    contexts: [pipe_qa]
+  qa_model_transformers_v2:
+    type: Model
+    uri: models://qa/transformers/2.0.0
+    properties: { name: transformers, version: 2.0.0, framework: transformers, format: binary, accuracy: 0.92, git_commit: 2l3m4n, metrics_auc: 0.93, metrics_f1: 0.91, metrics_bleu: 0.87, metrics_rouge: 0.85, metrics_mae: 0.09, metrics_rmse: 0.15 }
+    contexts: [pipe_qa]
+  qa_lib_transformers:
+    type: Library
+    uri: pkg://transformers/4.30.0
+    properties: { name: transformers, version: 4.30.0, purl: pkg:pypi/transformers@4.30.0 }
+  qa_eval_transformers_v1:
+    type: EvaluationReport
+    uri: eval://qa/transformers/1.0.0
+    properties: { name: eval-transformers, version: 1.0.0, auc: 0.91, f1: 0.89, bleu: 0.85, rouge: 0.83, mae: 0.11, rmse: 0.18 }
+    contexts: [pipe_qa]
+  qa_eval_transformers_v2:
+    type: EvaluationReport
+    uri: eval://qa/transformers/2.0.0
+    properties: { name: eval-transformers, version: 2.0.0, auc: 0.93, f1: 0.91, bleu: 0.87, rouge: 0.85, mae: 0.09, rmse: 0.15 }
+    contexts: [pipe_qa]
+  # Prod domain
+  prod_data_train_1:
+    type: Dataset
+    uri: data://prod/train-2025-01
+    properties: { name: prod-data, split: train, version: 2025-01, rows: 210000, schema: v7, domain: prod }
+    contexts: [pipe_prod]
+  prod_data_train_2:
+    type: Dataset
+    uri: data://prod/train-2025-02
+    properties: { name: prod-data, split: train, version: 2025-02, rows: 230000, schema: v7, domain: prod }
+    contexts: [pipe_prod]
+  prod_data_val_1:
+    type: Dataset
+    uri: data://prod/val-2025-01
+    properties: { name: prod-data, split: val, version: 2025-01, rows: 50000, schema: v7, domain: prod }
+    contexts: [pipe_prod]
+  prod_data_val_2:
+    type: Dataset
+    uri: data://prod/val-2025-02
+    properties: { name: prod-data, split: val, version: 2025-02, rows: 55000, schema: v7, domain: prod }
+    contexts: [pipe_prod]
+  prod_model_catboost_v1:
+    type: Model
+    uri: models://prod/catboost/1.0.0
+    properties: { name: catboost, version: 1.0.0, framework: catboost, format: binary, accuracy: 0.93, git_commit: 3m4n5o, metrics_auc: 0.94, metrics_f1: 0.92, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0.08, metrics_rmse: 0.13 }
+    contexts: [pipe_prod]
+  prod_model_catboost_v2:
+    type: Model
+    uri: models://prod/catboost/2.0.0
+    properties: { name: catboost, version: 2.0.0, framework: catboost, format: binary, accuracy: 0.95, git_commit: 4n5o6p, metrics_auc: 0.96, metrics_f1: 0.94, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0.07, metrics_rmse: 0.11 }
+    contexts: [pipe_prod]
+  prod_lib_catboost:
+    type: Library
+    uri: pkg://catboost/1.2.0
+    properties: { name: catboost, version: 1.2.0, purl: pkg:pypi/catboost@1.2.0 }
+  prod_eval_catboost_v1:
+    type: EvaluationReport
+    uri: eval://prod/catboost/1.0.0
+    properties: { name: eval-catboost, version: 1.0.0, auc: 0.94, f1: 0.92, bleu: 0, rouge: 0, mae: 0.08, rmse: 0.13 }
+    contexts: [pipe_prod]
+  prod_eval_catboost_v2:
+    type: EvaluationReport
+    uri: eval://prod/catboost/2.0.0
+    properties: { name: eval-catboost, version: 2.0.0, auc: 0.96, f1: 0.94, bleu: 0, rouge: 0, mae: 0.07, rmse: 0.11 }
+    contexts: [pipe_prod]
+  # Ops domain
+  ops_data_train_1:
+    type: Dataset
+    uri: data://ops/train-2025-01
+    properties: { name: ops-data, split: train, version: 2025-01, rows: 140000, schema: v8, domain: ops }
+    contexts: [pipe_ops]
+  ops_data_train_2:
+    type: Dataset
+    uri: data://ops/train-2025-02
+    properties: { name: ops-data, split: train, version: 2025-02, rows: 160000, schema: v8, domain: ops }
+    contexts: [pipe_ops]
+  ops_data_val_1:
+    type: Dataset
+    uri: data://ops/val-2025-01
+    properties: { name: ops-data, split: val, version: 2025-01, rows: 30000, schema: v8, domain: ops }
+    contexts: [pipe_ops]
+  ops_data_val_2:
+    type: Dataset
+    uri: data://ops/val-2025-02
+    properties: { name: ops-data, split: val, version: 2025-02, rows: 35000, schema: v8, domain: ops }
+    contexts: [pipe_ops]
+  ops_model_lightgbm_v1:
+    type: Model
+    uri: models://ops/lightgbm/1.0.0
+    properties: { name: lightgbm, version: 1.0.0, framework: lightgbm, format: binary, accuracy: 0.91, git_commit: 5o6p7q, metrics_auc: 0.92, metrics_f1: 0.90, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0.10, metrics_rmse: 0.17 }
+    contexts: [pipe_ops]
+  ops_model_lightgbm_v2:
+    type: Model
+    uri: models://ops/lightgbm/2.0.0
+    properties: { name: lightgbm, version: 2.0.0, framework: lightgbm, format: binary, accuracy: 0.93, git_commit: 6p7q8r, metrics_auc: 0.94, metrics_f1: 0.92, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0.08, metrics_rmse: 0.14 }
+    contexts: [pipe_ops]
+  ops_lib_lightgbm:
+    type: Library
+    uri: pkg://lightgbm/3.3.0
+    properties: { name: lightgbm, version: 3.3.0, purl: pkg:pypi/lightgbm@3.3.0 }
+  ops_eval_lightgbm_v1:
+    type: EvaluationReport
+    uri: eval://ops/lightgbm/1.0.0
+    properties: { name: eval-lightgbm, version: 1.0.0, auc: 0.92, f1: 0.90, bleu: 0, rouge: 0, mae: 0.10, rmse: 0.17 }
+    contexts: [pipe_ops]
+  ops_eval_lightgbm_v2:
+    type: EvaluationReport
+    uri: eval://ops/lightgbm/2.0.0
+    properties: { name: eval-lightgbm, version: 2.0.0, auc: 0.94, f1: 0.92, bleu: 0, rouge: 0, mae: 0.08, rmse: 0.14 }
+    contexts: [pipe_ops]
+  # Analytics domain
+  analytics_data_train_1:
+    type: Dataset
+    uri: data://analytics/train-2025-01
+    properties: { name: analytics-data, split: train, version: 2025-01, rows: 250000, schema: v9, domain: analytics }
+    contexts: [pipe_analytics]
+  analytics_data_train_2:
+    type: Dataset
+    uri: data://analytics/train-2025-02
+    properties: { name: analytics-data, split: train, version: 2025-02, rows: 270000, schema: v9, domain: analytics }
+    contexts: [pipe_analytics]
+  analytics_data_val_1:
+    type: Dataset
+    uri: data://analytics/val-2025-01
+    properties: { name: analytics-data, split: val, version: 2025-01, rows: 60000, schema: v9, domain: analytics }
+    contexts: [pipe_analytics]
+  analytics_data_val_2:
+    type: Dataset
+    uri: data://analytics/val-2025-02
+    properties: { name: analytics-data, split: val, version: 2025-02, rows: 65000, schema: v9, domain: analytics }
+    contexts: [pipe_analytics]
+  analytics_model_sklearn_v1:
+    type: Model
+    uri: models://analytics/sklearn/1.0.0
+    properties: { name: sklearn, version: 1.0.0, framework: sklearn, format: binary, accuracy: 0.89, git_commit: 7q8r9s, metrics_auc: 0.90, metrics_f1: 0.88, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0.13, metrics_rmse: 0.20 }
+    contexts: [pipe_analytics]
+  analytics_model_sklearn_v2:
+    type: Model
+    uri: models://analytics/sklearn/2.0.0
+    properties: { name: sklearn, version: 2.0.0, framework: sklearn, format: binary, accuracy: 0.91, git_commit: 8r9s0t, metrics_auc: 0.92, metrics_f1: 0.90, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0.11, metrics_rmse: 0.17 }
+    contexts: [pipe_analytics]
+  analytics_lib_sklearn:
+    type: Library
+    uri: pkg://scikit-learn/1.5.0
+    properties: { name: scikit-learn, version: 1.5.0, purl: pkg:pypi/scikit-learn@1.5.0 }
+  analytics_eval_sklearn_v1:
+    type: EvaluationReport
+    uri: eval://analytics/sklearn/1.0.0
+    properties: { name: eval-sklearn, version: 1.0.0, auc: 0.90, f1: 0.88, bleu: 0, rouge: 0, mae: 0.13, rmse: 0.20 }
+    contexts: [pipe_analytics]
+  analytics_eval_sklearn_v2:
+    type: EvaluationReport
+    uri: eval://analytics/sklearn/2.0.0
+    properties: { name: eval-sklearn, version: 2.0.0, auc: 0.92, f1: 0.90, bleu: 0, rouge: 0, mae: 0.11, rmse: 0.17 }
+    contexts: [pipe_analytics]
+  # Data domain
+  data_data_train_1:
+    type: Dataset
+    uri: data://data/train-2025-01
+    properties: { name: data-data, split: train, version: 2025-01, rows: 300000, schema: v10, domain: data }
+    contexts: [pipe_data]
+  data_data_train_2:
+    type: Dataset
+    uri: data://data/train-2025-02
+    properties: { name: data-data, split: train, version: 2025-02, rows: 320000, schema: v10, domain: data }
+    contexts: [pipe_data]
+  data_data_val_1:
+    type: Dataset
+    uri: data://data/val-2025-01
+    properties: { name: data-data, split: val, version: 2025-01, rows: 70000, schema: v10, domain: data }
+    contexts: [pipe_data]
+  data_data_val_2:
+    type: Dataset
+    uri: data://data/val-2025-02
+    properties: { name: data-data, split: val, version: 2025-02, rows: 75000, schema: v10, domain: data }
+    contexts: [pipe_data]
+  data_model_h2o_v1:
+    type: Model
+    uri: models://data/h2o/1.0.0
+    properties: { name: h2o, version: 1.0.0, framework: h2o, format: binary, accuracy: 0.92, git_commit: 9s0t1u, metrics_auc: 0.93, metrics_f1: 0.91, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0.09, metrics_rmse: 0.14 }
+    contexts: [pipe_data]
+  data_model_h2o_v2:
+    type: Model
+    uri: models://data/h2o/2.0.0
+    properties: { name: h2o, version: 2.0.0, framework: h2o, format: binary, accuracy: 0.94, git_commit: 0t1u2v, metrics_auc: 0.95, metrics_f1: 0.93, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0.07, metrics_rmse: 0.11 }
+    contexts: [pipe_data]
+  data_lib_h2o:
+    type: Library
+    uri: pkg://h2o/3.40.0
+    properties: { name: h2o, version: 3.40.0, purl: pkg:pypi/h2o@3.40.0 }
+  data_eval_h2o_v1:
+    type: EvaluationReport
+    uri: eval://data/h2o/1.0.0
+    properties: { name: eval-h2o, version: 1.0.0, auc: 0.93, f1: 0.91, bleu: 0, rouge: 0, mae: 0.09, rmse: 0.14 }
+    contexts: [pipe_data]
+  data_eval_h2o_v2:
+    type: EvaluationReport
+    uri: eval://data/h2o/2.0.0
+    properties: { name: eval-h2o, version: 2.0.0, auc: 0.95, f1: 0.93, bleu: 0, rouge: 0, mae: 0.07, rmse: 0.11 }
+    contexts: [pipe_data]
+
+  # Vision domain
+  vision_img_train_1:
+    type: Dataset
+    uri: data://vision/images/train-2025-01
+    properties: { name: vision-images, split: train, version: 2025-01, rows: 100000, schema: v1, domain: vision }
+    contexts: [pipe_vision]
+  vision_img_train_2:
+    type: Dataset
+    uri: data://vision/images/train-2025-02
+    properties: { name: vision-images, split: train, version: 2025-02, rows: 120000, schema: v1, domain: vision }
+    contexts: [pipe_vision]
+  vision_img_val_1:
+    type: Dataset
+    uri: data://vision/images/val-2025-01
+    properties: { name: vision-images, split: val, version: 2025-01, rows: 20000, schema: v1, domain: vision }
+    contexts: [pipe_vision]
+  vision_img_val_2:
+    type: Dataset
+    uri: data://vision/images/val-2025-02
+    properties: { name: vision-images, split: val, version: 2025-02, rows: 25000, schema: v1, domain: vision }
+    contexts: [pipe_vision]
+  vision_model_v1:
+    type: Model
+    uri: models://vision/resnet50/1.0.0
+    properties: { name: resnet50, version: 1.0.0, framework: pytorch, format: TorchScript, accuracy: 0.88, git_commit: a1b2c3, metrics_auc: 0.91, metrics_f1: 0.87, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0, metrics_rmse: 0 }
+    contexts: [pipe_vision]
+  vision_model_v2:
+    type: Model
+    uri: models://vision/resnet50/2.0.0
+    properties: { name: resnet50, version: 2.0.0, framework: pytorch, format: TorchScript, accuracy: 0.91, git_commit: d4e5f6, metrics_auc: 0.93, metrics_f1: 0.89, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0, metrics_rmse: 0 }
+    contexts: [pipe_vision]
+  vision_model_v3:
+    type: Model
+    uri: models://vision/resnet101/1.0.0
+    properties: { name: resnet101, version: 1.0.0, framework: pytorch, format: TorchScript, accuracy: 0.92, git_commit: a1b2c4, metrics_auc: 0.92, metrics_f1: 0.88, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0, metrics_rmse: 0 }
+    contexts: [pipe_vision]
+  vision_model_v4:
+    type: Model
+    uri: models://vision/efficientnet/1.0.0
+    properties: { name: efficientnet, version: 1.0.0, framework: pytorch, format: TorchScript, accuracy: 0.93, git_commit: a1b2c5, metrics_auc: 0.94, metrics_f1: 0.89, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0, metrics_rmse: 0 }
+    contexts: [pipe_vision]
+  vision_model_v5:
+    type: Model
+    uri: models://vision/efficientnet/2.0.0
+    properties: { name: efficientnet, version: 2.0.0, framework: pytorch, format: TorchScript, accuracy: 0.95, git_commit: a1b2c6, metrics_auc: 0.96, metrics_f1: 0.91, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0, metrics_rmse: 0 }
+    contexts: [pipe_vision]
+  vision_eval_v1:
+    type: EvaluationReport
+    uri: eval://vision/resnet50/1.0.0
+    properties: { name: eval-resnet50, version: 1.0.0, auc: 0.91, f1: 0.87, bleu: 0, rouge: 0, mae: 0, rmse: 0 }
+    contexts: [pipe_vision]
+  vision_eval_v2:
+    type: EvaluationReport
+    uri: eval://vision/resnet50/2.0.0
+    properties: { name: eval-resnet50, version: 2.0.0, auc: 0.93, f1: 0.89, bleu: 0, rouge: 0, mae: 0, rmse: 0 }
+    contexts: [pipe_vision]
+  vision_lib_torch:
+    type: Library
+    uri: pkg://torch/2.4.0
+    properties: { name: torch, version: 2.4.0, purl: pkg:pypi/torch@2.4.0 }
+  vision_lib_numpy:
+    type: Library
+    uri: pkg://numpy/2.0.0
+    properties: { name: numpy, version: 2.0.0, purl: pkg:pypi/numpy@2.0.0 }
+  # NLP domain
+  nlp_text_train_1:
+    type: Dataset
+    uri: data://nlp/text/train-2025-01
+    properties: { name: nlp-text, split: train, version: 2025-01, rows: 500000, schema: v2, domain: nlp }
+    contexts: [pipe_nlp]
+  nlp_text_train_2:
+    type: Dataset
+    uri: data://nlp/text/train-2025-02
+    properties: { name: nlp-text, split: train, version: 2025-02, rows: 520000, schema: v2, domain: nlp }
+    contexts: [pipe_nlp]
+  nlp_text_val_1:
+    type: Dataset
+    uri: data://nlp/text/val-2025-01
+    properties: { name: nlp-text, split: val, version: 2025-01, rows: 100000, schema: v2, domain: nlp }
+    contexts: [pipe_nlp]
+  nlp_text_val_2:
+    type: Dataset
+    uri: data://nlp/text/val-2025-02
+    properties: { name: nlp-text, split: val, version: 2025-02, rows: 110000, schema: v2, domain: nlp }
+    contexts: [pipe_nlp]
+  nlp_model_bert_v1:
+    type: Model
+    uri: models://nlp/bert/1.0.0
+    properties: { name: bert, version: 1.0.0, framework: tensorflow, format: SavedModel, accuracy: 0.92, git_commit: 1a2b3c, metrics_auc: 0.95, metrics_f1: 0.91, metrics_bleu: 0.88, metrics_rouge: 0.85, metrics_mae: 0, metrics_rmse: 0 }
+    contexts: [pipe_nlp]
+  nlp_model_bert_v2:
+    type: Model
+    uri: models://nlp/bert/2.0.0
+    properties: { name: bert, version: 2.0.0, framework: tensorflow, format: SavedModel, accuracy: 0.94, git_commit: 4d5e6f, metrics_auc: 0.97, metrics_f1: 0.93, metrics_bleu: 0.91, metrics_rouge: 0.89, metrics_mae: 0, metrics_rmse: 0 }
+    contexts: [pipe_nlp]
+  nlp_model_gpt_v1:
+    type: Model
+    uri: models://nlp/gpt/1.0.0
+    properties: { name: gpt, version: 1.0.0, framework: pytorch, format: TorchScript, accuracy: 0.93, git_commit: 2b3c4d, metrics_auc: 0.96, metrics_f1: 0.92, metrics_bleu: 0.92, metrics_rouge: 0.90, metrics_mae: 0, metrics_rmse: 0 }
+    contexts: [pipe_nlp]
+  nlp_model_gpt_v2:
+    type: Model
+    uri: models://nlp/gpt/2.0.0
+    properties: { name: gpt, version: 2.0.0, framework: pytorch, format: TorchScript, accuracy: 0.95, git_commit: 3c4d5e, metrics_auc: 0.98, metrics_f1: 0.94, metrics_bleu: 0.94, metrics_rouge: 0.92, metrics_mae: 0, metrics_rmse: 0 }
+    contexts: [pipe_nlp]
+  nlp_lib_tf:
+    type: Library
+    uri: pkg://tensorflow/2.7.0
+    properties: { name: tensorflow, version: 2.7.0, purl: pkg:pypi/tensorflow@2.7.0 }
+  nlp_lib_tokenizers:
+    type: Library
+    uri: pkg://tokenizers/0.13.2
+    properties: { name: tokenizers, version: 0.13.2, purl: pkg:pypi/tokenizers@0.13.2 }
+  nlp_eval_bert_v1:
+    type: EvaluationReport
+    uri: eval://nlp/bert/1.0.0
+    properties: { name: eval-bert, version: 1.0.0, auc: 0.95, f1: 0.91, bleu: 0.88, rouge: 0.85, mae: 0, rmse: 0 }
+    contexts: [pipe_nlp]
+  nlp_eval_bert_v2:
+    type: EvaluationReport
+    uri: eval://nlp/bert/2.0.0
+    properties: { name: eval-bert, version: 2.0.0, auc: 0.97, f1: 0.93, bleu: 0.91, rouge: 0.89, mae: 0, rmse: 0 }
+    contexts: [pipe_nlp]
+  nlp_eval_gpt_v1:
+    type: EvaluationReport
+    uri: eval://nlp/gpt/1.0.0
+    properties: { name: eval-gpt, version: 1.0.0, auc: 0.96, f1: 0.92, bleu: 0.92, rouge: 0.90, mae: 0, rmse: 0 }
+    contexts: [pipe_nlp]
+  nlp_eval_gpt_v2:
+    type: EvaluationReport
+    uri: eval://nlp/gpt/2.0.0
+    properties: { name: eval-gpt, version: 2.0.0, auc: 0.98, f1: 0.94, bleu: 0.94, rouge: 0.92, mae: 0, rmse: 0 }
+    contexts: [pipe_nlp]
+  # Tabular domain
+  tabular_data_train_1:
+    type: Dataset
+    uri: data://tabular/train-2025-01
+    properties: { name: tabular-data, split: train, version: 2025-01, rows: 200000, schema: v3, domain: tabular }
+    contexts: [pipe_tabular]
+  tabular_data_train_2:
+    type: Dataset
+    uri: data://tabular/train-2025-02
+    properties: { name: tabular-data, split: train, version: 2025-02, rows: 220000, schema: v3, domain: tabular }
+    contexts: [pipe_tabular]
+  tabular_data_val_1:
+    type: Dataset
+    uri: data://tabular/val-2025-01
+    properties: { name: tabular-data, split: val, version: 2025-01, rows: 40000, schema: v3, domain: tabular }
+    contexts: [pipe_tabular]
+  tabular_data_val_2:
+    type: Dataset
+    uri: data://tabular/val-2025-02
+    properties: { name: tabular-data, split: val, version: 2025-02, rows: 45000, schema: v3, domain: tabular }
+    contexts: [pipe_tabular]
+  tabular_model_xgb_v1:
+    type: Model
+    uri: models://tabular/xgboost/1.0.0
+    properties: { name: xgboost, version: 1.0.0, framework: xgboost, format: binary, accuracy: 0.89, git_commit: 5e6f7g, metrics_auc: 0.90, metrics_f1: 0.88, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0.12, metrics_rmse: 0.21 }
+    contexts: [pipe_tabular]
+  tabular_model_xgb_v2:
+    type: Model
+    uri: models://tabular/xgboost/2.0.0
+    properties: { name: xgboost, version: 2.0.0, framework: xgboost, format: binary, accuracy: 0.91, git_commit: 6f7g8h, metrics_auc: 0.92, metrics_f1: 0.90, metrics_bleu: 0, metrics_rouge: 0, metrics_mae: 0.10, metrics_rmse: 0.19 }
+    contexts: [pipe_tabular]
+  tabular_lib_xgb:
+    type: Library
+    uri: pkg://xgboost/1.7.0
+    properties: { name: xgboost, version: 1.7.0, purl: pkg:pypi/xgboost@1.7.0 }
+  tabular_lib_pandas:
+    type: Library
+    uri: pkg://pandas/2.1.0
+    properties: { name: pandas, version: 2.1.0, purl: pkg:pypi/pandas@2.1.0 }
+  tabular_eval_xgb_v1:
+    type: EvaluationReport
+    uri: eval://tabular/xgboost/1.0.0
+    properties: { name: eval-xgb, version: 1.0.0, auc: 0.90, f1: 0.88, bleu: 0, rouge: 0, mae: 0.12, rmse: 0.21 }
+    contexts: [pipe_tabular]
+  tabular_eval_xgb_v2:
+    type: EvaluationReport
+    uri: eval://tabular/xgboost/2.0.0
+    properties: { name: eval-xgb, version: 2.0.0, auc: 0.92, f1: 0.90, bleu: 0, rouge: 0, mae: 0.10, rmse: 0.19 }
+    contexts: [pipe_tabular]
+  # ... (continue for timeseries, recsys, qa, prod, ops, analytics, data, etc. until 100+ unique artifacts)
+
+# 4) Executions (100+ diverse, cross-pipeline)
+executions:
+
+  # Vision domain
+  vision_train_1:
+    type: TrainingRun
+    properties: { pipeline: vision-pipeline, state: COMPLETED, run_id: VTR-001, epochs: 10, learning_rate: 0.001, seed: 42 }
+    contexts: [exp_vision_jan, pipe_vision]
+  vision_train_2:
+    type: TrainingRun
+    properties: { pipeline: vision-pipeline, state: COMPLETED, run_id: VTR-002, epochs: 12, learning_rate: 0.0008, seed: 123 }
+    contexts: [exp_vision_feb, pipe_vision]
+  vision_eval_1:
+    type: Evaluation
+    properties: { pipeline: vision-pipeline, state: COMPLETED, run_id: VER-001 }
+    contexts: [pipe_vision]
+  vision_eval_2:
+    type: Evaluation
+    properties: { pipeline: vision-pipeline, state: COMPLETED, run_id: VER-002 }
+    contexts: [pipe_vision]
+  # NLP domain
+  nlp_train_1:
+    type: TrainingRun
+    properties: { pipeline: nlp-pipeline, state: COMPLETED, run_id: NTR-001, epochs: 5, learning_rate: 0.0005, seed: 7 }
+    contexts: [exp_nlp_jan, pipe_nlp]
+  nlp_train_2:
+    type: TrainingRun
+    properties: { pipeline: nlp-pipeline, state: COMPLETED, run_id: NTR-002, epochs: 6, learning_rate: 0.0003, seed: 8 }
+    contexts: [exp_nlp_feb, pipe_nlp]
+  nlp_eval_1:
+    type: Evaluation
+    properties: { pipeline: nlp-pipeline, state: COMPLETED, run_id: NER-001 }
+    contexts: [pipe_nlp]
+  nlp_eval_2:
+    type: Evaluation
+    properties: { pipeline: nlp-pipeline, state: COMPLETED, run_id: NER-002 }
+    contexts: [pipe_nlp]
+  # Tabular domain
+  tabular_train_1:
+    type: TrainingRun
+    properties: { pipeline: tabular-pipeline, state: COMPLETED, run_id: TTR-001, epochs: 20, learning_rate: 0.01, seed: 21 }
+    contexts: [exp_tabular_jan, pipe_tabular]
+  tabular_train_2:
+    type: TrainingRun
+    properties: { pipeline: tabular-pipeline, state: COMPLETED, run_id: TTR-002, epochs: 22, learning_rate: 0.008, seed: 22 }
+    contexts: [exp_tabular_feb, pipe_tabular]
+  tabular_eval_1:
+    type: Evaluation
+    properties: { pipeline: tabular-pipeline, state: COMPLETED, run_id: TER-001 }
+    contexts: [pipe_tabular]
+  tabular_eval_2:
+    type: Evaluation
+    properties: { pipeline: tabular-pipeline, state: COMPLETED, run_id: TER-002 }
+    contexts: [pipe_tabular]
+  # Timeseries domain
+  timeseries_train_1:
+    type: TrainingRun
+    properties: { pipeline: timeseries-pipeline, state: COMPLETED, run_id: STR-001, epochs: 15, learning_rate: 0.002, seed: 31 }
+    contexts: [exp_timeseries_jan, pipe_timeseries]
+  timeseries_train_2:
+    type: TrainingRun
+    properties: { pipeline: timeseries-pipeline, state: COMPLETED, run_id: STR-002, epochs: 18, learning_rate: 0.0015, seed: 32 }
+    contexts: [exp_timeseries_feb, pipe_timeseries]
+  timeseries_eval_1:
+    type: Evaluation
+    properties: { pipeline: timeseries-pipeline, state: COMPLETED, run_id: SER-001 }
+    contexts: [pipe_timeseries]
+  timeseries_eval_2:
+    type: Evaluation
+    properties: { pipeline: timeseries-pipeline, state: COMPLETED, run_id: SER-002 }
+    contexts: [pipe_timeseries]
+  # RecSys domain
+  recsys_train_1:
+    type: TrainingRun
+    properties: { pipeline: recsys-pipeline, state: COMPLETED, run_id: RTR-001, epochs: 8, learning_rate: 0.005, seed: 41 }
+    contexts: [exp_recsys_jan, pipe_recsys]
+  recsys_train_2:
+    type: TrainingRun
+    properties: { pipeline: recsys-pipeline, state: COMPLETED, run_id: RTR-002, epochs: 10, learning_rate: 0.004, seed: 42 }
+    contexts: [exp_recsys_feb, pipe_recsys]
+  recsys_eval_1:
+    type: Evaluation
+    properties: { pipeline: recsys-pipeline, state: COMPLETED, run_id: RER-001 }
+    contexts: [pipe_recsys]
+  recsys_eval_2:
+    type: Evaluation
+    properties: { pipeline: recsys-pipeline, state: COMPLETED, run_id: RER-002 }
+    contexts: [pipe_recsys]
+  # QA domain
+  qa_train_1:
+    type: TrainingRun
+    properties: { pipeline: qa-pipeline, state: COMPLETED, run_id: QTR-001, epochs: 12, learning_rate: 0.003, seed: 51 }
+    contexts: [exp_qa_jan, pipe_qa]
+  qa_train_2:
+    type: TrainingRun
+    properties: { pipeline: qa-pipeline, state: COMPLETED, run_id: QTR-002, epochs: 14, learning_rate: 0.0025, seed: 52 }
+    contexts: [exp_qa_feb, pipe_qa]
+  qa_eval_1:
+    type: Evaluation
+    properties: { pipeline: qa-pipeline, state: COMPLETED, run_id: QER-001 }
+    contexts: [pipe_qa]
+  qa_eval_2:
+    type: Evaluation
+    properties: { pipeline: qa-pipeline, state: COMPLETED, run_id: QER-002 }
+    contexts: [pipe_qa]
+  # Prod domain
+  prod_train_1:
+    type: TrainingRun
+    properties: { pipeline: prod-pipeline, state: COMPLETED, run_id: PTR-001, epochs: 16, learning_rate: 0.002, seed: 61 }
+    contexts: [exp_prod_jan, pipe_prod]
+  prod_train_2:
+    type: TrainingRun
+    properties: { pipeline: prod-pipeline, state: COMPLETED, run_id: PTR-002, epochs: 18, learning_rate: 0.0018, seed: 62 }
+    contexts: [exp_prod_feb, pipe_prod]
+  prod_eval_1:
+    type: Evaluation
+    properties: { pipeline: prod-pipeline, state: COMPLETED, run_id: PER-001 }
+    contexts: [pipe_prod]
+  prod_eval_2:
+    type: Evaluation
+    properties: { pipeline: prod-pipeline, state: COMPLETED, run_id: PER-002 }
+    contexts: [pipe_prod]
+  # Ops domain
+  ops_train_1:
+    type: TrainingRun
+    properties: { pipeline: ops-pipeline, state: COMPLETED, run_id: OTR-001, epochs: 11, learning_rate: 0.0022, seed: 71 }
+    contexts: [exp_ops_jan, pipe_ops]
+  ops_train_2:
+    type: TrainingRun
+    properties: { pipeline: ops-pipeline, state: COMPLETED, run_id: OTR-002, epochs: 13, learning_rate: 0.0019, seed: 72 }
+    contexts: [exp_ops_feb, pipe_ops]
+  ops_eval_1:
+    type: Evaluation
+    properties: { pipeline: ops-pipeline, state: COMPLETED, run_id: OER-001 }
+    contexts: [pipe_ops]
+  ops_eval_2:
+    type: Evaluation
+    properties: { pipeline: ops-pipeline, state: COMPLETED, run_id: OER-002 }
+    contexts: [pipe_ops]
+  # Analytics domain
+  analytics_train_1:
+    type: TrainingRun
+    properties: { pipeline: analytics-pipeline, state: COMPLETED, run_id: ATR-001, epochs: 25, learning_rate: 0.003, seed: 81 }
+    contexts: [exp_analytics_jan, pipe_analytics]
+  analytics_train_2:
+    type: TrainingRun
+    properties: { pipeline: analytics-pipeline, state: COMPLETED, run_id: ATR-002, epochs: 28, learning_rate: 0.0027, seed: 82 }
+    contexts: [exp_analytics_feb, pipe_analytics]
+  analytics_eval_1:
+    type: Evaluation
+    properties: { pipeline: analytics-pipeline, state: COMPLETED, run_id: AER-001 }
+    contexts: [pipe_analytics]
+  analytics_eval_2:
+    type: Evaluation
+    properties: { pipeline: analytics-pipeline, state: COMPLETED, run_id: AER-002 }
+    contexts: [pipe_analytics]
+  # Data domain
+  data_train_1:
+    type: TrainingRun
+    properties: { pipeline: data-pipeline, state: COMPLETED, run_id: DTR-001, epochs: 30, learning_rate: 0.004, seed: 91 }
+    contexts: [exp_data_jan, pipe_data]
+  data_train_2:
+    type: TrainingRun
+    properties: { pipeline: data-pipeline, state: COMPLETED, run_id: DTR-002, epochs: 32, learning_rate: 0.0038, seed: 92 }
+    contexts: [exp_data_feb, pipe_data]
+  data_eval_1:
+    type: Evaluation
+    properties: { pipeline: data-pipeline, state: COMPLETED, run_id: DER-001 }
+    contexts: [pipe_data]
+  data_eval_2:
+    type: Evaluation
+    properties: { pipeline: data-pipeline, state: COMPLETED, run_id: DER-002 }
+    contexts: [pipe_data]
+
+# 5) Events (hundreds, wiring artifacts and executions)
+events:
+
+  # Vision domain
+  - { execution: vision_train_1, type: INPUT, artifact: vision_img_train_1 }
+  - { execution: vision_train_1, type: INPUT, artifact: vision_lib_torch }
+  - { execution: vision_train_1, type: INPUT, artifact: vision_lib_numpy }
+  - { execution: vision_train_1, type: OUTPUT, artifact: vision_model_v1 }
+  - { execution: vision_train_2, type: INPUT, artifact: vision_img_train_2 }
+  - { execution: vision_train_2, type: INPUT, artifact: vision_lib_torch }
+  - { execution: vision_train_2, type: INPUT, artifact: vision_lib_numpy }
+  - { execution: vision_train_2, type: OUTPUT, artifact: vision_model_v2 }
+  - { execution: vision_eval_1, type: INPUT, artifact: vision_model_v1 }
+  - { execution: vision_eval_1, type: INPUT, artifact: vision_img_val_1 }
+  - { execution: vision_eval_1, type: OUTPUT, artifact: vision_eval_v1 }
+  - { execution: vision_eval_2, type: INPUT, artifact: vision_model_v2 }
+  - { execution: vision_eval_2, type: INPUT, artifact: vision_img_val_2 }
+  - { execution: vision_eval_2, type: OUTPUT, artifact: vision_eval_v2 }
+  # NLP domain
+  - { execution: nlp_train_1, type: INPUT, artifact: nlp_text_train_1 }
+  - { execution: nlp_train_1, type: INPUT, artifact: nlp_lib_tf }
+  - { execution: nlp_train_1, type: INPUT, artifact: nlp_lib_tokenizers }
+  - { execution: nlp_train_1, type: OUTPUT, artifact: nlp_model_bert_v1 }
+  - { execution: nlp_train_2, type: INPUT, artifact: nlp_text_train_2 }
+  - { execution: nlp_train_2, type: INPUT, artifact: nlp_lib_tf }
+  - { execution: nlp_train_2, type: INPUT, artifact: nlp_lib_tokenizers }
+  - { execution: nlp_train_2, type: OUTPUT, artifact: nlp_model_bert_v2 }
+  - { execution: nlp_eval_1, type: INPUT, artifact: nlp_model_bert_v1 }
+  - { execution: nlp_eval_1, type: INPUT, artifact: nlp_text_val_1 }
+  - { execution: nlp_eval_1, type: OUTPUT, artifact: nlp_eval_bert_v1 }
+  - { execution: nlp_eval_2, type: INPUT, artifact: nlp_model_bert_v2 }
+  - { execution: nlp_eval_2, type: INPUT, artifact: nlp_text_val_2 }
+  - { execution: nlp_eval_2, type: OUTPUT, artifact: nlp_eval_bert_v2 }
+  # Tabular domain
+  - { execution: tabular_train_1, type: INPUT, artifact: tabular_data_train_1 }
+  - { execution: tabular_train_1, type: INPUT, artifact: tabular_lib_xgb }
+  - { execution: tabular_train_1, type: INPUT, artifact: tabular_lib_pandas }
+  - { execution: tabular_train_1, type: OUTPUT, artifact: tabular_model_xgb_v1 }
+  - { execution: tabular_train_2, type: INPUT, artifact: tabular_data_train_2 }
+  - { execution: tabular_train_2, type: INPUT, artifact: tabular_lib_xgb }
+  - { execution: tabular_train_2, type: INPUT, artifact: tabular_lib_pandas }
+  - { execution: tabular_train_2, type: OUTPUT, artifact: tabular_model_xgb_v2 }
+  - { execution: tabular_eval_1, type: INPUT, artifact: tabular_model_xgb_v1 }
+  - { execution: tabular_eval_1, type: INPUT, artifact: tabular_data_val_1 }
+  - { execution: tabular_eval_1, type: OUTPUT, artifact: tabular_eval_xgb_v1 }
+  - { execution: tabular_eval_2, type: INPUT, artifact: tabular_model_xgb_v2 }
+  - { execution: tabular_eval_2, type: INPUT, artifact: tabular_data_val_2 }
+  - { execution: tabular_eval_2, type: OUTPUT, artifact: tabular_eval_xgb_v2 }
+  # Timeseries domain
+  - { execution: timeseries_train_1, type: INPUT, artifact: timeseries_data_train_1 }
+  - { execution: timeseries_train_1, type: INPUT, artifact: timeseries_lib_prophet }
+  - { execution: timeseries_train_1, type: OUTPUT, artifact: timeseries_model_prophet_v1 }
+  - { execution: timeseries_train_2, type: INPUT, artifact: timeseries_data_train_2 }
+  - { execution: timeseries_train_2, type: INPUT, artifact: timeseries_lib_prophet }
+  - { execution: timeseries_train_2, type: OUTPUT, artifact: timeseries_model_prophet_v2 }
+  - { execution: timeseries_eval_1, type: INPUT, artifact: timeseries_model_prophet_v1 }
+  - { execution: timeseries_eval_1, type: INPUT, artifact: timeseries_data_val_1 }
+  - { execution: timeseries_eval_1, type: OUTPUT, artifact: timeseries_eval_prophet_v1 }
+  - { execution: timeseries_eval_2, type: INPUT, artifact: timeseries_model_prophet_v2 }
+  - { execution: timeseries_eval_2, type: INPUT, artifact: timeseries_data_val_2 }
+  - { execution: timeseries_eval_2, type: OUTPUT, artifact: timeseries_eval_prophet_v2 }
+  # RecSys domain
+  - { execution: recsys_train_1, type: INPUT, artifact: recsys_data_train_1 }
+  - { execution: recsys_train_1, type: INPUT, artifact: recsys_lib_surprise }
+  - { execution: recsys_train_1, type: OUTPUT, artifact: recsys_model_surprise_v1 }
+  - { execution: recsys_train_2, type: INPUT, artifact: recsys_data_train_2 }
+  - { execution: recsys_train_2, type: INPUT, artifact: recsys_lib_surprise }
+  - { execution: recsys_train_2, type: OUTPUT, artifact: recsys_model_surprise_v2 }
+  - { execution: recsys_eval_1, type: INPUT, artifact: recsys_model_surprise_v1 }
+  - { execution: recsys_eval_1, type: INPUT, artifact: recsys_data_val_1 }
+  - { execution: recsys_eval_1, type: OUTPUT, artifact: recsys_eval_surprise_v1 }
+  - { execution: recsys_eval_2, type: INPUT, artifact: recsys_model_surprise_v2 }
+  - { execution: recsys_eval_2, type: INPUT, artifact: recsys_data_val_2 }
+  - { execution: recsys_eval_2, type: OUTPUT, artifact: recsys_eval_surprise_v2 }
+  # QA domain
+  - { execution: qa_train_1, type: INPUT, artifact: qa_data_train_1 }
+  - { execution: qa_train_1, type: INPUT, artifact: qa_lib_transformers }
+  - { execution: qa_train_1, type: OUTPUT, artifact: qa_model_transformers_v1 }
+  - { execution: qa_train_2, type: INPUT, artifact: qa_data_train_2 }
+  - { execution: qa_train_2, type: INPUT, artifact: qa_lib_transformers }
+  - { execution: qa_train_2, type: OUTPUT, artifact: qa_model_transformers_v2 }
+  - { execution: qa_eval_1, type: INPUT, artifact: qa_model_transformers_v1 }
+  - { execution: qa_eval_1, type: INPUT, artifact: qa_data_val_1 }
+  - { execution: qa_eval_1, type: OUTPUT, artifact: qa_eval_transformers_v1 }
+  - { execution: qa_eval_2, type: INPUT, artifact: qa_model_transformers_v2 }
+  - { execution: qa_eval_2, type: INPUT, artifact: qa_data_val_2 }
+  - { execution: qa_eval_2, type: OUTPUT, artifact: qa_eval_transformers_v2 }
+  # Prod domain
+  - { execution: prod_train_1, type: INPUT, artifact: prod_data_train_1 }
+  - { execution: prod_train_1, type: INPUT, artifact: prod_lib_catboost }
+  - { execution: prod_train_1, type: OUTPUT, artifact: prod_model_catboost_v1 }
+  - { execution: prod_train_2, type: INPUT, artifact: prod_data_train_2 }
+  - { execution: prod_train_2, type: INPUT, artifact: prod_lib_catboost }
+  - { execution: prod_train_2, type: OUTPUT, artifact: prod_model_catboost_v2 }
+  - { execution: prod_eval_1, type: INPUT, artifact: prod_model_catboost_v1 }
+  - { execution: prod_eval_1, type: INPUT, artifact: prod_data_val_1 }
+  - { execution: prod_eval_1, type: OUTPUT, artifact: prod_eval_catboost_v1 }
+  - { execution: prod_eval_2, type: INPUT, artifact: prod_model_catboost_v2 }
+  - { execution: prod_eval_2, type: INPUT, artifact: prod_data_val_2 }
+  - { execution: prod_eval_2, type: OUTPUT, artifact: prod_eval_catboost_v2 }
+  # Ops domain
+  - { execution: ops_train_1, type: INPUT, artifact: ops_data_train_1 }
+  - { execution: ops_train_1, type: INPUT, artifact: ops_lib_lightgbm }
+  - { execution: ops_train_1, type: OUTPUT, artifact: ops_model_lightgbm_v1 }
+  - { execution: ops_train_2, type: INPUT, artifact: ops_data_train_2 }
+  - { execution: ops_train_2, type: INPUT, artifact: ops_lib_lightgbm }
+  - { execution: ops_train_2, type: OUTPUT, artifact: ops_model_lightgbm_v2 }
+  - { execution: ops_eval_1, type: INPUT, artifact: ops_model_lightgbm_v1 }
+  - { execution: ops_eval_1, type: INPUT, artifact: ops_data_val_1 }
+  - { execution: ops_eval_1, type: OUTPUT, artifact: ops_eval_lightgbm_v1 }
+  - { execution: ops_eval_2, type: INPUT, artifact: ops_model_lightgbm_v2 }
+  - { execution: ops_eval_2, type: INPUT, artifact: ops_data_val_2 }
+  - { execution: ops_eval_2, type: OUTPUT, artifact: ops_eval_lightgbm_v2 }
+  # Analytics domain
+  - { execution: analytics_train_1, type: INPUT, artifact: analytics_data_train_1 }
+  - { execution: analytics_train_1, type: INPUT, artifact: analytics_lib_sklearn }
+  - { execution: analytics_train_1, type: OUTPUT, artifact: analytics_model_sklearn_v1 }
+  - { execution: analytics_train_2, type: INPUT, artifact: analytics_data_train_2 }
+  - { execution: analytics_train_2, type: INPUT, artifact: analytics_lib_sklearn }
+  - { execution: analytics_train_2, type: OUTPUT, artifact: analytics_model_sklearn_v2 }
+  - { execution: analytics_eval_1, type: INPUT, artifact: analytics_model_sklearn_v1 }
+  - { execution: analytics_eval_1, type: INPUT, artifact: analytics_data_val_1 }
+  - { execution: analytics_eval_1, type: OUTPUT, artifact: analytics_eval_sklearn_v1 }
+  - { execution: analytics_eval_2, type: INPUT, artifact: analytics_model_sklearn_v2 }
+  - { execution: analytics_eval_2, type: INPUT, artifact: analytics_data_val_2 }
+  - { execution: analytics_eval_2, type: OUTPUT, artifact: analytics_eval_sklearn_v2 }
+  # Data domain
+  - { execution: data_train_1, type: INPUT, artifact: data_data_train_1 }
+  - { execution: data_train_1, type: INPUT, artifact: data_lib_h2o }
+  - { execution: data_train_1, type: OUTPUT, artifact: data_model_h2o_v1 }
+  - { execution: data_train_2, type: INPUT, artifact: data_data_train_2 }
+  - { execution: data_train_2, type: INPUT, artifact: data_lib_h2o }
+  - { execution: data_train_2, type: OUTPUT, artifact: data_model_h2o_v2 }
+  - { execution: data_eval_1, type: INPUT, artifact: data_model_h2o_v1 }
+  - { execution: data_eval_1, type: INPUT, artifact: data_data_val_1 }
+  - { execution: data_eval_1, type: OUTPUT, artifact: data_eval_h2o_v1 }
+  - { execution: data_eval_2, type: INPUT, artifact: data_model_h2o_v2 }
+  - { execution: data_eval_2, type: INPUT, artifact: data_data_val_2 }
+  - { execution: data_eval_2, type: OUTPUT, artifact: data_eval_h2o_v2 }
+
+# 6) Associations (hundreds, linking contexts and executions)
+associations:
+
+  # Vision domain
+  - { context: pipe_vision, execution: vision_train_1 }
+  - { context: pipe_vision, execution: vision_train_2 }
+  - { context: pipe_vision, execution: vision_eval_1 }
+  - { context: pipe_vision, execution: vision_eval_2 }
+  # NLP domain
+  - { context: pipe_nlp, execution: nlp_train_1 }
+  - { context: pipe_nlp, execution: nlp_train_2 }
+  - { context: pipe_nlp, execution: nlp_eval_1 }
+  - { context: pipe_nlp, execution: nlp_eval_2 }
+  # Tabular domain
+  - { context: pipe_tabular, execution: tabular_train_1 }
+  - { context: pipe_tabular, execution: tabular_train_2 }
+  - { context: pipe_tabular, execution: tabular_eval_1 }
+  - { context: pipe_tabular, execution: tabular_eval_2 }
+  # Timeseries domain
+  - { context: pipe_timeseries, execution: timeseries_train_1 }
+  - { context: pipe_timeseries, execution: timeseries_train_2 }
+  - { context: pipe_timeseries, execution: timeseries_eval_1 }
+  - { context: pipe_timeseries, execution: timeseries_eval_2 }
+  # RecSys domain
+  - { context: pipe_recsys, execution: recsys_train_1 }
+  - { context: pipe_recsys, execution: recsys_train_2 }
+  - { context: pipe_recsys, execution: recsys_eval_1 }
+  - { context: pipe_recsys, execution: recsys_eval_2 }
+  # QA domain
+  - { context: pipe_qa, execution: qa_train_1 }
+  - { context: pipe_qa, execution: qa_train_2 }
+  - { context: pipe_qa, execution: qa_eval_1 }
+  - { context: pipe_qa, execution: qa_eval_2 }
+  # Prod domain
+  - { context: pipe_prod, execution: prod_train_1 }
+  - { context: pipe_prod, execution: prod_train_2 }
+  - { context: pipe_prod, execution: prod_eval_1 }
+  - { context: pipe_prod, execution: prod_eval_2 }
+  # Ops domain
+  - { context: pipe_ops, execution: ops_train_1 }
+  - { context: pipe_ops, execution: ops_train_2 }
+  - { context: pipe_ops, execution: ops_eval_1 }
+  - { context: pipe_ops, execution: ops_eval_2 }
+  # Analytics domain
+  - { context: pipe_analytics, execution: analytics_train_1 }
+  - { context: pipe_analytics, execution: analytics_train_2 }
+  - { context: pipe_analytics, execution: analytics_eval_1 }
+  - { context: pipe_analytics, execution: analytics_eval_2 }
+  # Data domain
+  - { context: pipe_data, execution: data_train_1 }
+  - { context: pipe_data, execution: data_train_2 }
+  - { context: pipe_data, execution: data_eval_1 }
+  - { context: pipe_data, execution: data_eval_2 }
+
+# 7) Attributions (hundreds, linking contexts and artifacts)
+attributions:
+
+  # Vision domain
+  - { context: exp_vision_jan, artifact: vision_model_v1 }
+  - { context: exp_vision_feb, artifact: vision_model_v2 }
+  # NLP domain
+  - { context: exp_nlp_jan, artifact: nlp_model_bert_v1 }
+  - { context: exp_nlp_feb, artifact: nlp_model_bert_v2 }
+  # Tabular domain
+  - { context: exp_tabular_jan, artifact: tabular_model_xgb_v1 }
+  - { context: exp_tabular_feb, artifact: tabular_model_xgb_v2 }
+  # Timeseries domain
+  - { context: exp_timeseries_jan, artifact: timeseries_model_prophet_v1 }
+  - { context: exp_timeseries_feb, artifact: timeseries_model_prophet_v2 }
+  # RecSys domain
+  - { context: exp_recsys_jan, artifact: recsys_model_surprise_v1 }
+  - { context: exp_recsys_feb, artifact: recsys_model_surprise_v2 }
+  # QA domain
+  - { context: exp_qa_jan, artifact: qa_model_transformers_v1 }
+  - { context: exp_qa_feb, artifact: qa_model_transformers_v2 }
+  # Prod domain
+  - { context: exp_prod_jan, artifact: prod_model_catboost_v1 }
+  - { context: exp_prod_feb, artifact: prod_model_catboost_v2 }
+  # Ops domain
+  - { context: exp_ops_jan, artifact: ops_model_lightgbm_v1 }
+  - { context: exp_ops_feb, artifact: ops_model_lightgbm_v2 }
+  # Analytics domain
+  - { context: exp_analytics_jan, artifact: analytics_model_sklearn_v1 }
+  - { context: exp_analytics_feb, artifact: analytics_model_sklearn_v2 }
+  # Data domain
+  - { context: exp_data_jan, artifact: data_model_h2o_v1 }
+  - { context: exp_data_feb, artifact: data_model_h2o_v2 }

@@ -1,0 +1,280 @@
+# Example MLMD population scenario for Kubeflow Pipelines lineage
+# Based on a real multi-experiment cluster (iris + mnist)
+
+types:
+  artifact:
+    Dataset:
+      properties:
+        name: STRING
+        split: STRING
+        version: STRING
+        rows: INT
+    Model:
+      properties:
+        name: STRING
+        version: STRING
+        framework: STRING
+        format: STRING
+        accuracy: DOUBLE
+    Metrics:
+      properties:
+        accuracy: DOUBLE
+        loss: DOUBLE
+        f1: DOUBLE
+    Library:
+      properties:
+        name: STRING
+        version: STRING
+        purl: STRING
+  execution:
+    ComponentRun:
+      properties:
+        component: STRING
+        state: STRING
+        start_time: STRING
+        end_time: STRING
+    PipelineRun:
+      properties:
+        name: STRING
+        pipeline: STRING
+        status: STRING
+        run_id: STRING
+  context:
+    Experiment:
+      properties:
+        description: STRING
+    Pipeline:
+      properties:
+        owner: STRING
+        repo: STRING
+    Run:
+      properties:
+        triggered_by: STRING
+        timestamp: STRING
+
+contexts:
+  iris_exp:
+    type: Experiment
+    name: iris-classification
+    properties:
+      description: "Classify iris species using sklearn pipelines"
+  mnist_exp:
+    type: Experiment
+    name: mnist-training
+    properties:
+      description: "Train CNN models on MNIST images"
+
+  iris_pipe:
+    type: Pipeline
+    name: iris-training-pipeline
+    properties:
+      owner: ml-team
+      repo: https://git.example.com/ml/pipelines/iris
+  mnist_pipe:
+    type: Pipeline
+    name: mnist-cnn-pipeline
+    properties:
+      owner: vision-team
+      repo: https://git.example.com/ml/pipelines/mnist
+
+  run_iris_1:
+    type: Run
+    name: iris-run-2025-10-01
+    properties:
+      triggered_by: "cron"
+      timestamp: "2025-10-01T09:00:00Z"
+  run_iris_2:
+    type: Run
+    name: iris-run-2025-10-10
+    properties:
+      triggered_by: "user:alice"
+      timestamp: "2025-10-10T09:00:00Z"
+  run_mnist_1:
+    type: Run
+    name: mnist-run-2025-09-20
+    properties:
+      triggered_by: "user:bob"
+      timestamp: "2025-09-20T14:00:00Z"
+
+artifacts:
+  iris_raw:
+    type: Dataset
+    uri: data://iris/raw.csv
+    properties:
+      name: iris
+      split: raw
+      version: v1
+      rows: 150
+    contexts: [iris_pipe]
+  iris_processed:
+    type: Dataset
+    uri: data://iris/processed/train.csv
+    properties:
+      name: iris
+      split: train
+      version: v1.1
+      rows: 120
+    contexts: [iris_pipe]
+  iris_model_v1:
+    type: Model
+    uri: models://iris/model_v1.pkl
+    properties:
+      name: iris_model
+      version: v1
+      framework: sklearn
+      format: pickle
+      accuracy: 0.94
+    contexts: [iris_pipe]
+  iris_metrics_v1:
+    type: Metrics
+    uri: metrics://iris/run1.json
+    properties:
+      accuracy: 0.94
+      loss: 0.1
+      f1: 0.93
+    contexts: [iris_pipe]
+
+  iris_model_v2:
+    type: Model
+    uri: models://iris/model_v2.pkl
+    properties:
+      name: iris_model
+      version: v2
+      framework: sklearn
+      format: pickle
+      accuracy: 0.96
+    contexts: [iris_pipe]
+  iris_metrics_v2:
+    type: Metrics
+    uri: metrics://iris/run2.json
+    properties:
+      accuracy: 0.96
+      loss: 0.08
+      f1: 0.95
+    contexts: [iris_pipe]
+
+  mnist_dataset:
+    type: Dataset
+    uri: data://mnist/train-2025-09-01
+    properties:
+      name: mnist
+      split: train
+      version: 2025-09-01
+      rows: 60000
+    contexts: [mnist_pipe]
+  mnist_model_v1:
+    type: Model
+    uri: models://mnist/cnn_v1.h5
+    properties:
+      name: mnist_cnn
+      version: v1
+      framework: tensorflow
+      format: SavedModel
+      accuracy: 0.992
+    contexts: [mnist_pipe]
+  mnist_metrics_v1:
+    type: Metrics
+    uri: metrics://mnist/run1.json
+    properties:
+      accuracy: 0.992
+      loss: 0.02
+      f1: 0.991
+    contexts: [mnist_pipe]
+
+executions:
+  preprocess_iris:
+    type: ComponentRun
+    properties:
+      component: preprocess
+      state: COMPLETED
+      start_time: "2025-10-01T09:00:00Z"
+      end_time: "2025-10-01T09:10:00Z"
+    contexts: [iris_pipe, run_iris_1]
+  train_iris_v1:
+    type: ComponentRun
+    properties:
+      component: train
+      state: COMPLETED
+      start_time: "2025-10-01T09:10:00Z"
+      end_time: "2025-10-01T09:20:00Z"
+    contexts: [iris_pipe, run_iris_1]
+  evaluate_iris_v1:
+    type: ComponentRun
+    properties:
+      component: evaluate
+      state: COMPLETED
+      start_time: "2025-10-01T09:20:00Z"
+      end_time: "2025-10-01T09:25:00Z"
+    contexts: [iris_pipe, run_iris_1]
+
+  train_iris_v2:
+    type: ComponentRun
+    properties:
+      component: train
+      state: COMPLETED
+      start_time: "2025-10-10T09:00:00Z"
+      end_time: "2025-10-10T09:15:00Z"
+    contexts: [iris_pipe, run_iris_2]
+  evaluate_iris_v2:
+    type: ComponentRun
+    properties:
+      component: evaluate
+      state: COMPLETED
+      start_time: "2025-10-10T09:15:00Z"
+      end_time: "2025-10-10T09:20:00Z"
+    contexts: [iris_pipe, run_iris_2]
+
+  train_mnist_v1:
+    type: ComponentRun
+    properties:
+      component: train
+      state: COMPLETED
+      start_time: "2025-09-20T14:00:00Z"
+      end_time: "2025-09-20T15:10:00Z"
+    contexts: [mnist_pipe, run_mnist_1]
+  evaluate_mnist_v1:
+    type: ComponentRun
+    properties:
+      component: evaluate
+      state: COMPLETED
+      start_time: "2025-09-20T15:10:00Z"
+      end_time: "2025-09-20T15:15:00Z"
+    contexts: [mnist_pipe, run_mnist_1]
+
+events:
+  # Iris run 1
+  - { execution: preprocess_iris, type: INPUT, artifact: iris_raw }
+  - { execution: preprocess_iris, type: OUTPUT, artifact: iris_processed }
+  - { execution: train_iris_v1, type: INPUT, artifact: iris_processed }
+  - { execution: train_iris_v1, type: OUTPUT, artifact: iris_model_v1 }
+  - { execution: evaluate_iris_v1, type: INPUT, artifact: iris_model_v1 }
+  - { execution: evaluate_iris_v1, type: OUTPUT, artifact: iris_metrics_v1 }
+
+  # Iris run 2
+  - { execution: train_iris_v2, type: INPUT, artifact: iris_processed }
+  - { execution: train_iris_v2, type: OUTPUT, artifact: iris_model_v2 }
+  - { execution: evaluate_iris_v2, type: INPUT, artifact: iris_model_v2 }
+  - { execution: evaluate_iris_v2, type: OUTPUT, artifact: iris_metrics_v2 }
+
+  # MNIST run 1
+  - { execution: train_mnist_v1, type: INPUT, artifact: mnist_dataset }
+  - { execution: train_mnist_v1, type: OUTPUT, artifact: mnist_model_v1 }
+  - { execution: evaluate_mnist_v1, type: INPUT, artifact: mnist_model_v1 }
+  - { execution: evaluate_mnist_v1, type: OUTPUT, artifact: mnist_metrics_v1 }
+
+associations:
+  - { context: iris_pipe, execution: preprocess_iris }
+  - { context: iris_pipe, execution: train_iris_v1 }
+  - { context: iris_pipe, execution: evaluate_iris_v1 }
+  - { context: iris_pipe, execution: train_iris_v2 }
+  - { context: iris_pipe, execution: evaluate_iris_v2 }
+  - { context: mnist_pipe, execution: train_mnist_v1 }
+  - { context: mnist_pipe, execution: evaluate_mnist_v1 }
+
+attributions:
+  - { context: run_iris_1, artifact: iris_model_v1 }
+  - { context: run_iris_1, artifact: iris_metrics_v1 }
+  - { context: run_iris_2, artifact: iris_model_v2 }
+  - { context: run_iris_2, artifact: iris_metrics_v2 }
+  - { context: run_mnist_1, artifact: mnist_model_v1 }
+  - { context: run_mnist_1, artifact: mnist_metrics_v1 }

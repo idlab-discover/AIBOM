@@ -77,16 +77,14 @@ SCENARIO_YAML=scenarios/my-scenario.yaml EXTRACT_CONTEXT=expA docker-compose up 
 Windows (PowerShell):
 
 ```powershell
-$env:SCENARIO_YAML="scenarios/my-scenario.yaml"
-$env:EXTRACT_CONTEXT="expA"
-docker-compose up --build
+$env:SCENARIO_YAML="scenarios/my-scenario.yaml"; $env:EXTRACT_CONTEXT="expA"; docker-compose up --build
 ```
 
 Windows (CMD):
 
 ```cmd
-set SCENARIO_YAML=scenarios\my-scenario.yaml
-set EXTRACT_CONTEXT=expA
+set SCENARIO_YAML=scenarios\my-scenario.yaml &&
+set EXTRACT_CONTEXT=expA &&
 docker-compose up --build
 ```
 
@@ -183,3 +181,4 @@ docker-compose.yml
 ## License
 
 See [LICENSE](LICENSE) for details.
+$

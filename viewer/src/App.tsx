@@ -1,9 +1,7 @@
-import './App.css'
-import VisNetwork from './components/VisNetwork'
-import 'bootstrap-icons/font/bootstrap-icons.css';
+import HomePage from './components/HomePage'
 
 function App() {
-  return <VisNetwork />
+  return <HomePage />
 }
 
 export default App
