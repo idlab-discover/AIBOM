@@ -6,14 +6,9 @@ import logging
 
 import yaml  # type: ignore
 from ml_metadata.proto import metadata_store_pb2  # type: ignore
+from ml_metadata.metadata_store import metadata_store  # type: ignore
 
-from mlmd_support import (
-    upsert_artifact_type,
-    upsert_execution_type,
-    upsert_context_type,
-)
 logger = logging.getLogger(__name__)
-
 
 _PROP_TYPES = {
     "STRING": metadata_store_pb2.STRING,
@@ -214,3 +209,36 @@ def populate_mlmd_from_scenario(store, scenario_path: str | Path) -> Dict[str, A
     logger.info("scenario loaded", extra={"contexts": len(
         ctx_index), "artifacts": len(art_index), "executions": len(exe_index)})
     return result
+
+
+def upsert_artifact_type(store: "metadata_store.MetadataStore", name: str, properties: dict = None) -> "metadata_store_pb2.ArtifactType":
+    at = metadata_store_pb2.ArtifactType(name=name)
+    if properties:
+        for k, v in properties.items():
+            at.properties[k] = v
+    at.id = store.put_artifact_type(at)
+    logger.debug(
+        f"upserted artifact type {name} with properties {list((properties or {}).keys())}")
+    return at
+
+
+def upsert_execution_type(store: "metadata_store.MetadataStore", name: str, properties: dict = None) -> "metadata_store_pb2.ExecutionType":
+    et = metadata_store_pb2.ExecutionType(name=name)
+    if properties:
+        for k, v in properties.items():
+            et.properties[k] = v
+    et.id = store.put_execution_type(et)
+    logger.debug(
+        f"upserted execution type {name} with properties {list((properties or {}).keys())}")
+    return et
+
+
+def upsert_context_type(store: "metadata_store.MetadataStore", name: str, properties: dict = None) -> "metadata_store_pb2.ContextType":
+    ct = metadata_store_pb2.ContextType(name=name)
+    if properties:
+        for k, v in properties.items():
+            ct.properties[k] = v
+    ct.id = store.put_context_type(ct)
+    logger.debug(
+        f"upserted context type {name} with properties {list((properties or {}).keys())}")
+    return ct

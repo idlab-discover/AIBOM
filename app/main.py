@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 from mlmd_support import connect_mlmd
-from scenario_loader import populate_mlmd_from_scenario
 from extraction import extract_model_deps_and_datasets
 from cyclonedx_gen import (
     create_model_bom,
@@ -326,13 +325,9 @@ def main(argv: List[str]) -> int:
     cdx_dir = out_dir / "cyclonedx"
     cdx_dir.mkdir(parents=True, exist_ok=True)
 
-    # Connect and populate MLMD
+    # Connect to MLMD
     logger.info("connecting to MLMD store")
     store = connect_mlmd()
-    scenario = os.environ.get(
-        "SCENARIO_YAML", "app/scenarios/realistic-mlops.yaml")
-    logger.info("populating MLMD from scenario", extra={"scenario": scenario})
-    populate_mlmd_from_scenario(store, scenario)
 
     # Extract model and dataset metadata
     context_name = os.environ.get("EXTRACT_CONTEXT")

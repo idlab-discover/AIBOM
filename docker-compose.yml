@@ -1,16 +1,37 @@
 services:
+  mlmd-populator:
+    build:
+      context: ./populator
+      dockerfile: Dockerfile
+    container_name: mlmd-populator
+    working_dir: /app
+    volumes:
+      - ./mlmd-db:/mlmd-db
+      - ./logs:/app/logs
+    environment:
+      - SCENARIO_YAML=${SCENARIO_YAML:-scenarios/simple-scenario-1.yaml}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-plain}
+    command: /bin/bash -c "python main.py 2>&1 | tee -a /app/logs/mlmd-populator.log"
+
   mlmd-bom:
     build:
       context: ./app
       dockerfile: Dockerfile
-    container_name: mlmd-bom-app
+    container_name: mlmd-app
     working_dir: /app
+    depends_on:
+      mlmd-populator:
+        condition: service_completed_successfully
     volumes:
       - ./output:/app/output
       - ./logs:/app/logs
+      - ./mlmd-db:/mlmd-db
     environment:
       - EXTRACT_CONTEXT=${EXTRACT_CONTEXT:-}
-      - SCENARIO_YAML=${SCENARIO_YAML:-scenarios/realistic-mlops.yaml}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-plain}
-    command: /bin/bash -c "python main.py 2>&1 | tee -a /app/logs/mlmd-bom.log"
+    command: /bin/bash -c "python main.py 2>&1 | tee -a /app/logs/mlmd-app.log"
+
+volumes:
+  mlmd_db:

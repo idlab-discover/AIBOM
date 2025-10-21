@@ -358,10 +358,12 @@ def write_cyclonedx_files(
             bom=bom, output_format=CxOutputFormat.JSON, schema_version=schema)
         with open(out_json, "w", encoding="utf-8") as f:
             f.write(outter_json.output_as_string(indent=2))
-        logger.info("wrote CycloneDX JSON", extra={"path": out_json})
+        logger.info(f"wrote CycloneDX JSON: {out_json}", extra={
+                    "path": out_json})
     if out_xml:
         outter_xml = make_outputter(
             bom=bom, output_format=CxOutputFormat.XML, schema_version=schema)
         with open(out_xml, "w", encoding="utf-8") as f:
             f.write(outter_xml.output_as_string(indent=2))
-        logger.debug("wrote CycloneDX XML", extra={"path": out_xml})
+        logger.debug(f"wrote CycloneDX XML: {out_xml}", extra={
+                     "path": out_xml})
