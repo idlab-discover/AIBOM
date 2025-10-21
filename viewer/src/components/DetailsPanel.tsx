@@ -28,7 +28,7 @@ const DetailsPanel = ({
                 <div className="relative group flex items-center">
                     <InformationCircleIcon className="w-6 h-6 text-gray-500 transition-colors group-hover:text-blue-500" />
                     <div className="absolute right-0 top-full mt-2 z-10 hidden group-hover:block bg-white border border-gray-300 rounded shadow-lg px-3 py-2 text-xs text-gray-700 w-64">
-                        Select a node to display its CycloneDX content.<br />Model or Dataset nodes can be fully viewed by double clicking.
+                        Select a node to display its CycloneDX content. Model or Dataset nodes can be fully viewed by double clicking.
                     </div>
                 </div>
             </div>

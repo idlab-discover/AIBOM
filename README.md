@@ -1,17 +1,16 @@
-
 # MLMD-BOM
 
 **Proof of Concept:** Generate CycloneDX BOMs (modelboms and databoms) from ML Metadata (MLMD) with live interactive visualization.
 
 MLMD is a library for recording and retrieving metadata associated with machine learning workflows. It helps track artifacts, executions, and lineage information, enabling reproducibility and traceability in ML pipelines.  
 
-For more information, see the official ML Metadata repository: https://github.com/google/ml-metadata
+For more information, see the official [ML Metadata repository](https://github.com/google/ml-metadata).
 
-This project is designed to integrate with Kubeflow, an open-source machine learning platform built on Kubernetes. In standard Kubeflow deployments, Kubeflow Pipelines records metadata in an MLMD (ML Metadata) store by default if the metadata service is enabled and properly configured. This repository can then be used to extract that metadata and build and sign AI Bill of Materials (AIBOMs) based on pipelines provided by ML Engineers.
+To fully realize secure and trustworthy AI workflows, this project is designed for tight integration with Kubeflow, an open-source machine learning platform built on Kubernetes. Leveraging Kubeflow’s native MLMD tracking, every step—from data ingestion to model deployment—is captured in the MLMD store (if the metadata service is enabled and properly configured). This repository extracts that metadata and generates verifiable, tamper-resistant AI Bill of Materials (AIBOMs) for pipelines provided by ML engineers. This approach provides end-to-end traceability and integrity, making it possible to audit and trust the complete lineage of AI assets.
 
-For more information, see the official KubeFlow documentation: https://www.kubeflow.org/docs/
+For more information, see the official [KubeFlow documentation](https://www.kubeflow.org/docs/).
 
-This would enable full AI lifecycle and lineage tracking.
+> **Disclaimer:** Tamper resistance, security and verifiability and full Kubeflow integration are not yet implemented. This project is a proof of concept and these features are planned for future development.
 
 ---
 
@@ -45,15 +44,7 @@ Outputs are written to `output/`:
 
 Run the generator to produce BOMs into `output/` using Docker Compose.
 
-Linux/macOS:
-
 ```bash
-docker-compose up --build
-```
-
-Windows (PowerShell):
-
-```powershell
 docker-compose up --build
 ```
 
@@ -63,47 +54,71 @@ This will build and run the generator and write files under `output/`.
 
 You can control the generated data with these environment variables.
 
-- SCENARIO_YAML — Path to a YAML file that defines the MLMD scenario. Default: `scenarios/demo-complex.yaml`.
-- EXTRACT_CONTEXT — Filter which MLMD context to export (names come from the scenario). Examples: `expA`, `expB`, `demo-pipeline`.
+- SCENARIO_YAML — Path to a YAML file that defines the MLMD scenario. Default: `scenarios/complex-scenario-1.yaml`.
+- EXTRACT_CONTEXT — Filter which MLMD context to export. A context is any named group (pipeline, run, experiment, or custom) defined in your scenario YAML. Only exact name matches are supported (e.g., `expA`, `expB`, `demo-pipeline`).
 - LOG_LEVEL — Python generator log level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` (default: `INFO`).
 - LOG_FORMAT — Python generator log format: `plain` (default) or `json`.
 
-Linux/macOS (inline):
+### Scenarios and context
 
-```bash
-SCENARIO_YAML=scenarios/my-scenario.yaml EXTRACT_CONTEXT=expA docker-compose up --build
-```
+Scenario YAMLs are located in `app/scenarios/`:
+
+- Simple scenarios (single pipeline):
+  - `simple-scenario-1.yaml`
+  - `simple-scenario-2.yaml`
+  - `simple-scenario-3.yaml`
+- Complex scenarios (multiple pipelines):
+  - `complex-scenario-1.yaml`
+  - `complex-scenario-2.yaml`
+  - `complex-scenario-3.yaml`
+
+You can use any of these by setting the `SCENARIO_YAML` environment variable.
 
 Windows (PowerShell):
 
 ```powershell
-$env:SCENARIO_YAML="scenarios/my-scenario.yaml"; $env:EXTRACT_CONTEXT="expA"; docker-compose up --build
+$env:SCENARIO_YAML="scenarios/complex-scenario-2.yaml"; $env:EXTRACT_CONTEXT="expA"; 
+docker-compose up --build
 ```
 
 Windows (CMD):
 
 ```cmd
-set SCENARIO_YAML=scenarios\my-scenario.yaml &&
+set SCENARIO_YAML=scenarios\complex-scenario-2.yaml &&
 set EXTRACT_CONTEXT=expA &&
 docker-compose up --build
 ```
 
-Logging examples (Linux/macOS):
+Linux/macOS (Bash):
 
 ```bash
-# Linux/macOS
-LOG_LEVEL=DEBUG docker-compose up --build
-
-# JSON logs
-LOG_FORMAT=json LOG_LEVEL=DEBUG docker-compose up --build
+SCENARIO_YAML=scenarios/complex-scenario-2.yaml 
+EXTRACT_CONTEXT=expA 
+docker-compose up --build
 ```
 
-### Try these examples (Application)
+### Change logging
 
-- Default demo (no env vars): just run `docker-compose up --build` and then start the viewer.
-- Use your own scenario: set `SCENARIO_YAML=scenarios/my-scenario.yaml`.
-- Export a single context: set `EXTRACT_CONTEXT=expA`.
-- Enable verbose logs: set `LOG_LEVEL=DEBUG`.
+Windows (PowerShell):
+
+```powershell
+$env:LOG_FORMAT="json"; $env:LOG_LEVEL="DEBUG"; 
+docker-compose up --build
+```
+
+Windows (CMD):
+
+```cmd
+set LOG_FORMAT=json && set LOG_LEVEL=DEBUG && 
+docker-compose up --build
+```
+
+Linux/macOS (Bash):
+
+```bash
+LOG_FORMAT=json LOG_LEVEL=DEBUG 
+docker-compose up --build
+```
 
 ---
 
@@ -111,7 +126,7 @@ LOG_FORMAT=json LOG_LEVEL=DEBUG docker-compose up --build
 
 ### Requirements (Viewer)
 
-- Node.js (v18+ recommended)
+- Node.js
 - npm
 
 ### Usage (Viewer)
@@ -136,7 +151,7 @@ Features:
 
 ## Lineage and relationships
 
-Each model and dataset is exported to its own BOM file (modelbom or databom). When multiple versions exist, a newer model links to its parent via BOM-Link; a single version will be emitted without lineage references.
+Each model and dataset is exported to its own BOM file (modelbom or databom). When multiple versions exist, a newer model links to its parent via BOM-Link.
 
 - CycloneDX (specVersion 1.6):
   - Dependencies via the dependency graph
@@ -149,31 +164,55 @@ Each model and dataset is exported to its own BOM file (modelbom or databom). Wh
 
 ```bash
 app/
+  __init__.py
+  cyclonedx_gen.py
   Dockerfile
-  requirements.txt
+  extraction.py
   main.py
   mlmd_support.py
-  extraction.py
-  cyclonedx_gen.py
+  requirements.txt
+  scenario_loader.py
   spdx3_gen.py                    # currently not used
-viewer/
-  package.json
-  vite.config.ts
-  server/graphBuilder.ts          # graph builder used by dev server
-  src/
-    components/VisNetwork.tsx
-    components/vis.css
-    App.tsx
-    main.tsx
-  public/
-viewer_old/                       # deprecated (no instructions)
+  scenarios/
+    simple-scenario-1.yaml
+    simple-scenario-2.yaml
+    simple-scenario-3.yaml
+    complex-scenario-1.yaml
+    complex-scenario-2.yaml
+    complex-scenario-3.yaml
+docs/
+  img/
+logs/
 output/
   cyclonedx/
-  extracted_mlmd.json
-  extracted_mlmd_models.json
-  extracted_mlmd_datasets.json
-  extracted_mlmd_multi.json
+    # Generated BOMs
+  # Extracted metadata JSONs
+viewer/
+  eslint.config.js
+  index.html
+  package.json
+  README.md
+  tsconfig.app.json
+  tsconfig.json
+  tsconfig.node.json
+  vite.config.ts
+  public/
+  server/
+    graphBuilder.ts
+    logger.ts
+  src/
+    App.tsx
+    index.css
+    main.tsx
+    assets/
+    components/
+      DetailsPanel.tsx
+      HomePage.tsx
+      NetworkGraph.tsx
+    types/
+      GraphData.tsx
 docker-compose.yml
+LICENSE
 ```
 
 ---
@@ -181,4 +220,3 @@ docker-compose.yml
 ## License
 
 See [LICENSE](LICENSE) for details.
-$

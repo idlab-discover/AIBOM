@@ -27,7 +27,7 @@ const NetworkGraph = ({ data, physics, onSelect, onDblClick, networkRef }: Netwo
                 physics,
                 layout: { improvedLayout: true, hierarchical: false },
                 nodes: { font: { color: '#111', size: 16, face: 'Arial' } },
-                edges: { smooth: { enabled: true, type: 'dynamic', roundness: 0.5 } },
+                edges: { smooth: { enabled: true, type: 'continuous', roundness: 0 } },
             }
         )
         networkRef.current = network
