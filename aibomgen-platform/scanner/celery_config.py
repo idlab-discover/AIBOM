@@ -27,7 +27,8 @@ celery_app.conf.update(
         "scan-worker-image-every-hour": {
             "task": "tasks.scan_worker_and_self_images",
             # Executes every X minutes
-            "schedule": crontab(minute=0, hour='*/1'),
+            # "schedule": crontab(minute=0, hour='*/1'),
+            "schedule": crontab(minute='*/6'),  # Executes every 6 minutes
         },
     },
     result_persistent=True,  # Make result messages persistent
