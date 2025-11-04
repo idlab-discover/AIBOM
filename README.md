@@ -1,155 +1,258 @@
-
 # MLMD-BOM
 
 **Proof of Concept:** Generate CycloneDX BOMs (modelboms and databoms) from ML Metadata (MLMD) with live interactive visualization.
 
 MLMD is a library for recording and retrieving metadata associated with machine learning workflows. It helps track artifacts, executions, and lineage information, enabling reproducibility and traceability in ML pipelines.  
 
-For more information, see the official ML Metadata repository: https://github.com/google/ml-metadata
+For more information, see the official [ML Metadata repository](https://github.com/google/ml-metadata).
 
-This project is designed to integrate with Kubeflow, an open-source machine learning platform built on Kubernetes. In standard Kubeflow deployments, Kubeflow Pipelines records metadata in an MLMD (ML Metadata) store by default if the metadata service is enabled and properly configured. This repository can then be used to extract that metadata and build and sign AI Bill of Materials (AIBOMs) based on pipelines provided by ML Engineers.
+To fully realize secure and trustworthy AI workflows, this project is designed for tight integration with Kubeflow, an open-source machine learning platform built on Kubernetes. Leveraging Kubeflow’s native MLMD tracking, every step—from data ingestion to model deployment—is captured in the MLMD store (if the metadata service is enabled and properly configured). This repository extracts that metadata and generates verifiable, tamper-resistant AI Bill of Materials (AIBOMs) for pipelines provided by ML engineers. This approach provides end-to-end traceability and integrity, making it possible to audit and trust the complete lineage of AI assets.
 
-For more information, see the official KubeFlow documentation: https://www.kubeflow.org/docs/
+For more information, see the official [KubeFlow documentation](https://www.kubeflow.org/docs/).
 
-This would enable full AI lifecycle and lineage tracking.
+> **Disclaimer:** Tamper resistance, security and verifiability and full Kubeflow integration are not yet implemented. This project is a proof of concept and these features are planned for future development.
 
----
+## What you get
 
-## Overview
+- MLMD database with multiple pipelines, models, datasets, dependencies
+- Extraction of model/dataset metadata with lineage and multi-pipeline relations
+- Export to CycloneDX (per model and per dataset)
+- Interactive viewer (Vite + React + vis-network)
 
+Outputs are written to `output/`:
 
-MLMD-BOM demonstrates how to:
-- Create an in-memory MLMD (ML Metadata) store with multiple pipelines, models, datasets, and dependencies.
-- Extract model, dataset, and dependency metadata, including lineage and multi-pipeline relations.
-- Export the metadata as Bill of Materials (BOM) files in CycloneDX format, as both modelboms and databoms.
-- Visualize the resulting graphs live in your browser, with auto-updating and interactive exploration.
+- `output/cyclonedx/` — per-model and per-dataset CycloneDX JSON
+- `output/extracted_mlmd.json` — all
+- `output/extracted_mlmd_models.json` — models only
+- `output/extracted_mlmd_datasets.json` — datasets only
+- `output/extracted_mlmd_multi.json` — multi-pipeline/combined
 
-Outputs are written to `output/` with format-specific subfolders. For each run, you get:
-- Per-model CycloneDX BOMs in `output/cyclonedx/` (modelboms)
-- Per-dataset CycloneDX BOMs in `output/cyclonedx/` (databoms)
-- Four extracted MLMD JSONs in `output/`:
-  - `extracted_mlmd.json` (all)
-  - `extracted_mlmd_models.json` (models only)
-  - `extracted_mlmd_datasets.json` (datasets only)
-  - `extracted_mlmd_multi.json` (multi-pipeline/combined)
+![MLMD-BOM live viewer screenshot](./docs/img/image.png)
 
-<p align="center">
-  <img alt="MLMD-BOM live viewer screenshot" src="./docs/img/image.png" width="900" />
-</p>
+## 1. Docker Compose Simulation
 
----
-
-
-## Requirements
+### Prerequisites
 
 - Docker
 - Docker Compose
 
-No need to install Python or Node.js locally—everything runs in containers.
+### Setup env files
 
+Two env files live in `./env` and are loaded by Docker Compose.
 
-## Usage
+- `env/default.env` (used by populator and app)
+  - LOG_LEVEL=INFO, LOG_FORMAT=plain
+  - MLMD_SQLITE_PATH=/mlmd-sqlite/mlmd.db
+  - MLMD_HOST=mysql, MLMD_PORT=3306, MLMD_DATABASE=mlmd, MLMD_USER=mlmd, MLMD_PASSWORD=mlmdpass, MLMD_ROOT_PASSWORD=rootpass
+  - SCENARIO_YAML=scenarios/complex-scenario-2.yaml
+  - MLMD_RESET_DB=yes
+  - EXTRACT_CONTEXT= (optional)
 
-### Build and Run
+- `env/mysql.env` (used by the MySQL container in the MySQL compose file)
+  - MYSQL_DATABASE=mlmd
+  - MYSQL_USER=mlmd
+  - MYSQL_PASSWORD=mlmdpass
+  - MYSQL_ROOT_PASSWORD=rootpass
+
+Notes
+
+- You don’t need to set `MLMD_BACKEND` in these files: the compose files set it per service (`sqlite` in `docker-compose.yml`, `mysql` in `docker-compose.mysql.yml`).
+- Change `SCENARIO_YAML` to switch the simulated pipeline (see `populator/scenarios/*.yaml`). An example value is: `scenarios/complex-scenario-2.yaml`.
+- `MLMD_RESET_DB=no` will likely break the generation because interfering data -> set it to 'yes'.
+- `EXTRACT_CONTEXT` lets you focus on a specific MLMD context/pipeline when generating BOMs.
+
+### 1.1 Database
+
+There are two options for persistent storage: SQLite and MySQL.
+
+SQLite (default in `docker-compose.yml`)
+
+- Easiest to run locally; data is a single file under `./mlmd-sqlite/mlmd.db`.
+- The env var `MLMD_SQLITE_PATH=/mlmd-sqlite/mlmd.db` is set in `env/default.env` and the host folder `./mlmd-sqlite` is mounted into both services.
+
+MySQL (in `docker-compose.mysql.yml`)
+
+- Starts a `mysql:8.0` container with a healthcheck and initializes the `mlmd` database.
+- Credentials are provided via `env/mysql.env` (defaults: db `mlmd`, user `mlmd/mlmdpass`, root `rootpass`).
+- The server is configured for `mysql_native_password` to match MLMD client expectations.
+- Data volume is persisted in the named volume `mlmd_mysql_data`.
+
+### 1.2 MLMD Populator
+
+This is the service that simulates pipelines and experiments that are run in for example KubeFlow and populate the ml-metadata database.
+
+Multiple scenarios are provided which can be loaded into the database.
+
+What it does
+
+- Starts with an empty MLMD store (optionally resets it) and loads a scenario from `populator/scenarios/*.yaml`.
+- Supports both backends via `MLMD_BACKEND`:
+
+  - `sqlite` (local file, default in `docker-compose.yml`)
+  - `mysql` (external container, default in `docker-compose.mysql.yml`)
+
+Key environment variables (from `env/default.env`)
+
+- SCENARIO_YAML: Path to the scenario YAML to load (default: `scenarios/complex-scenario-2.yaml`).
+- MLMD_RESET_DB: `yes|no` whether to reset the MLMD DB before populating (default: `yes`).
+- LOG_LEVEL / LOG_FORMAT: tweak logging (`INFO` and `plain` by default).
+
+Outputs and logs
+
+- Writes logs to `./logs/mlmd-populator.log` (mounted into the container).
+- Populates the MLMD store; no files are written by the populator itself.
+
+### 1.3 MLMD App
+
+This is the actual service that should be integrated in a real life KubeFlow setup. It reads from the ml-metadata database and generates BOM files accordingly. The Viewer is able to transform these BOMs in visual graphs (see [Section 2](#2-viewer-vite--react)).
+
+What it does
+
+- Connects to the same MLMD store as the populator (SQLite or MySQL).
+- Extracts models and datasets (including lineage) and generates CycloneDX JSON files.
+- Writes to `./output/`:
+
+  - `output/cyclonedx/*.cyclonedx.json` — per model and per dataset
+  - `output/extracted_mlmd*.json` — extracted raw metadata snapshots
+
+Key environment variables (from `env/default.env`)
+
+- EXTRACT_CONTEXT: Optional MLMD context/pipeline filter; leave empty to process everything.
+- MLMD_* connection variables.
+- LOG_LEVEL / LOG_FORMAT.
+
+Outputs and logs
+
+- Writes logs to `./logs/mlmd-app.log`.
+- All artifacts are in `./output` and are consumed by the Viewer.
+
+### Run everything together
+
+Choose a backend and bring up the stack.
+
+SQLite (2 services: populator → app)
 
 ```bash
-docker compose up --build
+docker compose -f docker-compose.yml up --build
 ```
 
-This will:
-- Build the generator image (`mlmd-bom`) and the viewer image (`bom-viewer`)
-- Run the generator to produce BOMs into `output/`
-- Start a live viewer web app on [http://localhost:8080](http://localhost:8080)
-- Write files to `output/` (in your project directory), including:
-  - `extracted_mlmd.json` and `extracted_mlmd_multi.json`
-  - Per-model CycloneDX BOMs in `output/cyclonedx/`, e.g. `FakeNet-1.0.0.cyclonedx.json`
-  - Per-model SPDX 3.0 BOMs in `output/spdx/`, e.g. `FakeNet-1.0.0.spdx3.json`
+MySQL (3 services: mysql → populator → app)
 
-
-#### Environment Variables
-
-- `SCENARIO_YAML`: Path to a YAML file that defines the MLMD scenario to load. Defaults to `scenarios/demo-complex.yaml`. To use your own scenario, run:
-
-  ```bash
-  SCENARIO_YAML=scenarios/my-scenario.yaml docker compose up --build
-  ```
-
-- `EXTRACT_CONTEXT`: Filter which MLMD context to export (uses names from your scenario). For the demo scenario, try:
-  - Experiment contexts: `expA`, `expB`
-  - Pipeline context: `demo-pipeline`
-
-#### Logging (optional)
-
-- Python generator (`app/`):
-  - `LOG_LEVEL`: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: INFO)
-  - `LOG_FORMAT`: `plain` (default) or `json`
-- Node viewer (`viewer/`):
-  - `LOG_LEVEL`: debug, info, warn, error (default: info)
-  - `LOG_FORMAT`: `plain` (default) or `json`
-
-#### Examples
-
-- Default (loads the bundled demo scenario): run the compose command above and open [http://localhost:8080](http://localhost:8080)
-- Export only one experiment from the demo scenario: set `EXTRACT_CONTEXT=expA` and re-run the generator service; the viewer will auto-refresh when new BOMs are written.
-- Use your own scenario: set `SCENARIO_YAML=app/scenarios/my-scenario.yaml` and re-run the generator service.
-
-Enable verbose logging:
+Note: You might have to run this twice, because the first time the healthcheck will not work and mysql will not be initialized in time.
 
 ```bash
-LOG_LEVEL=DEBUG docker compose up --build
+docker compose -f docker-compose.mysql.yml up --build
 ```
 
-Emit JSON logs for both services:
+What to expect
+
+- The populator will run, populate MLMD, and exit successfully.
+- The app will then connect, generate CycloneDX files into `./output/cyclonedx/`, and exit.
+- Logs are written to `./logs/` (`mlmd-populator.log`, `mlmd-app.log`).
+
+View the results
+
+- Start the Viewer (see [Section 2](#2-viewer-vite--react)) to visualize the generated BOMs from `./output`.
+
+### Run components separately with certain env
+
+If the mysql is runnnig and we want to run certain containers again with different environment variables, this is also possible. See following examples:
+
+Run the populator with a different scenario (while for example mysql is still running)
 
 ```bash
-LOG_FORMAT=json LOG_LEVEL=DEBUG docker compose up --build
+docker compose -f docker-compose.mysql.yml run -e SCENARIO_YAML=scenarios/simple-scenario-1.yaml mlmd-populator
 ```
 
+Run the app again with different extraction context (while for example mysql is still running)
 
-### Visualize the BOMs (Live Viewer)
-
-- Open [http://localhost:8080](http://localhost:8080) for the combined view (CycloneDX modelboms and databoms).
-- Click a node to see its CycloneDX JSON in the side panel; links let you open the full BOM files.
-- Double‑click a model or dataset node to open its full BOM.
-- Nodes are draggable; dependencies cluster around their model; shared dependencies appear between models; lineage edges are dashed orange, dataset relations are red.
-
-The viewer watches `output/cyclonedx` and updates automatically when new files are created or existing files change.
-
-
-
-## Lineage and Relationships
-
-Each model and dataset is exported to its own BOM file (modelbom or databom). The newer model version links to its immediate parent when both versions are present. If filtering results in a single version, the BOM is emitted without lineage.
-
-- **CycloneDX (specVersion 1.6):**
-  - Dependencies are represented in the dependency graph.
-  - Lineage is expressed via an externalReference of type `bom` on the model component using a BOM-Link URN pointing to the parent BOM.
-  - Model-dataset relations are also encoded as externalReferences.
-
-docker-compose.yml     # Docker Compose orchestration
-
-## Project Structure
-
-```
-app/
-  Dockerfile           # App container image
-  requirements.txt     # App dependencies
-  main.py              # Main entry point
-  mlmd_support.py      # MLMD utility functions
-  extraction.py        # Extract model + dependencies from MLMD
-  cyclonedx_gen.py     # CycloneDX BOM generation (JSON + XML)
-  spdx3_gen.py         # SPDX 3.0 JSON generation (per model) (currently not used)
-viewer/
-  Dockerfile           # Viewer container image (Node)
-  package.json         # Viewer web app dependencies and scripts
-  server.js            # Live viewer server (Express + chokidar)
-  build.js             # Static builder (kept for reference)
-output/
-  cyclonedx/           # Per-model CycloneDX BOMs
-  spdx/                # Per-model SPDX 3.0 BOMs
-docker-compose.yml     # Docker Compose orchestration
+```bash
+docker compose -f docker-compose.mysql.yml run -e EXTRACT_CONTEXT=tabular-pipeline mlmd-bom
 ```
 
+These will work for the SQLite database too: use `-f docker-compose.yml`.
+
+### Clean up containers
+
+Keep volumes/data:
+
+```bash
+docker compose -f docker-compose.yml down
+docker compose -f docker-compose.mysql.yml down
+```
+
+Also remove MySQL data volume:
+
+```bash
+docker compose -f docker-compose.mysql.yml down --volumes
+```
+
+Also remove images (destructive):
+
+```bash
+docker compose -f docker-compose.mysql.yml down --rmi all --volumes
+```
+
+Note: --volumes removes named volumes (data will be lost).
+
+## 2. Viewer (Vite + React)
+
+### Requirements
+
+- Node.js
+- npm
+
+### Usage (Viewer)
+
+Start the viewer locally (reads from `../output/cyclonedx/`):
+
+```bash
+cd viewer
+npm install
+npm run dev
+# Open http://localhost:5173
+```
+
+Features:
+
+- Click a node to see CycloneDX JSON in the side panel; open full BOM files via links
+- Double‑click a model or dataset node to open its full BOM in a new tab
+- Drag nodes and toggle physics on/off
+- Refresh button to re-read `output/cyclonedx` when files change
+
+---
+
+## Lineage and relationships
+
+Each model and dataset is exported to its own BOM file (modelbom or databom). When multiple versions exist, a newer model links to its parent via BOM-Link.
+
+- CycloneDX (specVersion 1.6):
+  - Dependencies via the dependency graph
+  - Lineage via `externalReferences` of type `bom` (BOM-Link URN)
+  - Model–dataset relations via `externalReferences`
+
+---
+
+## Repository structure
+
+```bash
+docker-compose.yml
+docker-compose.mysql.yml
+README.md
+LICENSE
+app/              # MLMD BOM generator (Python)
+docs/             # Documentation and images
+env/              # Environment variable files
+logs/             # Log output
+mlmd-sqlite/      # SQLite database storage
+mysql-init/       # MySQL initialization scripts
+output/           # Generated BOMs and extracted metadata
+populator/        # MLMD database populator (Python)
+scripts/          # Utility scripts
+viewer/           # Interactive BOM viewer (Vite + React)
+```
+
+---
 
 ## License
 

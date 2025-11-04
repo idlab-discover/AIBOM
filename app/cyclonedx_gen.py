@@ -294,6 +294,7 @@ def add_dataset_lineage_relation(parent_bom: Bom, child_bom: Bom):
 
     parent_comp = find_dataset_component(parent_bom)
     child_comp = find_dataset_component(child_bom)
+
     if not parent_comp or not child_comp:
         logger.warning("could not locate dataset components for lineage", extra={
                        "has_parent": bool(parent_comp), "has_child": bool(child_comp)})
@@ -304,6 +305,12 @@ def add_dataset_lineage_relation(parent_bom: Bom, child_bom: Bom):
     if not parent_ref or not child_ref:
         logger.warning("missing bom-ref for dataset lineage", extra={
                        "parent_ref": bool(parent_ref), "child_ref": bool(child_ref)})
+        return
+
+    # Prevent self-referencing lineage
+    if parent_ref == child_ref:
+        logger.warning("Skipping self-referencing dataset lineage", extra={
+            "bom_ref": parent_ref})
         return
 
     try:
@@ -351,10 +358,12 @@ def write_cyclonedx_files(
             bom=bom, output_format=CxOutputFormat.JSON, schema_version=schema)
         with open(out_json, "w", encoding="utf-8") as f:
             f.write(outter_json.output_as_string(indent=2))
-        logger.info("wrote CycloneDX JSON", extra={"path": out_json})
+        logger.info(f"wrote CycloneDX JSON: {out_json}", extra={
+                    "path": out_json})
     if out_xml:
         outter_xml = make_outputter(
             bom=bom, output_format=CxOutputFormat.XML, schema_version=schema)
         with open(out_xml, "w", encoding="utf-8") as f:
             f.write(outter_xml.output_as_string(indent=2))
-        logger.debug("wrote CycloneDX XML", extra={"path": out_xml})
+        logger.debug(f"wrote CycloneDX XML: {out_xml}", extra={
+                     "path": out_xml})

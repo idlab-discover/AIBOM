@@ -58,6 +58,11 @@ cython_debug/
 # Output directory
 output/
 
+# SQLite database files
+*.db
+*.sqlite3
+mlmd-sqlite/
+
 # Logs
 logs/
 *.log
