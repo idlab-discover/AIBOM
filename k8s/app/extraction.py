@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Set, Iterable
 import logging
 
 from ml_metadata.metadata_store import metadata_store  # type: ignore
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 def extract_model_deps_and_datasets(
     store: "metadata_store.MetadataStore",
-    context_name: str = None,
+    context_name: str | None = None,
     model_type: str = "Model",
     dataset_type: str = "Dataset",
 ) -> Dict[str, List[Dict[str, Any]]]:
@@ -55,44 +55,155 @@ def extract_model_deps_and_datasets(
         type_name_cache[tid] = name
         return name
 
-    def val(prop_map, key):
-        v = prop_map.get(key)
+    def _value_to_python(v) -> Any:
+        """Decode an MLMD Value message to a python value using oneof discriminator."""
         if v is None:
             return ""
-        if hasattr(v, "string_value") and v.string_value:
+        try:
+            which = v.WhichOneof("value")
+        except Exception:
+            which = None
+        if which == "string_value":
+            return getattr(v, "string_value", "")
+        if which == "int_value":
+            return getattr(v, "int_value", 0)
+        if which == "double_value":
+            return getattr(v, "double_value", 0.0)
+        # Fallback heuristics if WhichOneof is unavailable
+        if hasattr(v, "string_value") and getattr(v, "string_value", None) not in (None, ""):
             return v.string_value
-        if hasattr(v, "int_value") and v.int_value:
-            return str(v.int_value)
-        if hasattr(v, "double_value") and v.double_value:
-            return str(v.double_value)
+        if hasattr(v, "int_value"):
+            return v.int_value
+        if hasattr(v, "double_value"):
+            return v.double_value
         return ""
 
-    def all_props(prop_map) -> Dict[str, Any]:
+    def val_both(artifact: "metadata_store_pb2.Artifact", key: str) -> Any:
+        """Get a property value by key from properties or custom_properties (properties win)."""
+        # properties first
+        v = artifact.properties.get(key)
+        if v is not None:
+            return _value_to_python(v)
+        # then custom_properties
+        try:
+            cv = artifact.custom_properties.get(key)
+        except Exception:
+            cv = None
+        if cv is not None:
+            return _value_to_python(cv)
+        return ""
+
+    def val_any(artifact: "metadata_store_pb2.Artifact", keys: List[str]) -> Any:
+        """Try multiple keys across properties and custom_properties and return first non-empty value."""
+        for k in keys:
+            v = val_both(artifact, k)
+            if v not in (None, ""):
+                return v
+        return ""
+
+    def all_props_both(artifact: "metadata_store_pb2.Artifact") -> Dict[str, Any]:
+        """Merge typed and custom properties to a simple dict; typed properties take precedence."""
         out: Dict[str, Any] = {}
-        for k, v in prop_map.items():
-            if hasattr(v, "string_value") and v.string_value:
-                out[k] = v.string_value
-            elif hasattr(v, "int_value") and v.int_value:
-                out[k] = v.int_value
-            elif hasattr(v, "double_value") and v.double_value:
-                out[k] = v.double_value
+        # typed first
+        for k, v in getattr(artifact, "properties", {}).items():
+            out[k] = _value_to_python(v)
+        # then custom for missing keys
+        try:
+            cprops = artifact.custom_properties
+        except Exception:
+            cprops = {}
+        for k, v in getattr(cprops, "items", lambda: [])():
+            if k not in out:
+                out[k] = _value_to_python(v)
         return out
 
-    def is_type_match(type_name: str, target_short: str) -> bool:
-        """Match either exact name or namespaced form like 'system.Model'."""
-        if not type_name:
-            return False
-        return type_name == target_short or type_name.endswith(f".{target_short}")
-
-    def get_types_matching(target_short: str) -> List[metadata_store_pb2.ArtifactType]:
-        """Return all artifact types whose name equals target or ends with .target."""
+    def _available_artifact_type_names() -> List[str]:
         try:
-            all_types = store.get_artifact_types()
-        except Exception:
-            all_types = []
-        return [t for t in all_types if is_type_match(t.name, target_short)]
+            ats = store.get_artifact_types()
+            return [t.name for t in ats]
+        except Exception as e:
+            logger.debug("failed to list artifact types",
+                         extra={"err": str(e)})
+            return []
+
+    def _resolve_type_name_candidates(target: str, available: Iterable[str]) -> List[str]:
+        """
+        Resolve concrete MLMD artifact type names present in the store for a logical target like
+        "Model" or "Dataset". Handles KFP v2 system.* types and common synonyms.
+        Returns a non-empty list of type names to use, ordered by preference.
+        """
+        avail = list(available)
+        lower_avail = {a.lower(): a for a in avail}
+
+        # Exact match (case-sensitive or insensitive)
+        if target in avail:
+            return [target]
+        if target.lower() in lower_avail:
+            return [lower_avail[target.lower()]]
+
+        # Known synonyms by logical target
+        synonyms: Dict[str, List[str]] = {
+            "Model": [
+                "system.Model",
+                "KerasModel",
+                "PytorchModel",
+                "TensorFlowSavedModel",
+                "MLModel",
+                "ModelArtifact",
+            ],
+            "Dataset": [
+                "system.Dataset",
+                "Example",
+                "Examples",
+                "MLTable",
+            ],
+        }
+        cands: List[str] = []
+        for s in synonyms.get(target, []):
+            if s in avail:
+                cands.append(s)
+            elif s.lower() in lower_avail:
+                cands.append(lower_avail[s.lower()])
+
+        # Heuristic: anything that endswith or contains the token (case-insensitive)
+        token = target.lower()
+        for a in avail:
+            al = a.lower()
+            if al == token:
+                continue
+            if al.endswith(token) or token in al:
+                if a not in cands:
+                    cands.append(a)
+
+        return cands
+
+    def _collect_by_type_names(type_names: List[str]) -> List["metadata_store_pb2.Artifact"]:
+        arts: List["metadata_store_pb2.Artifact"] = []
+        for tn in type_names:
+            try:
+                arts.extend(store.get_artifacts_by_type(tn))
+            except Exception as e:
+                logger.debug("get_artifacts_by_type failed",
+                             extra={"type": tn, "err": str(e)})
+        return arts
 
     # --- Extract models ---
+    available_types = _available_artifact_type_names()
+    resolved_model_type_names = _resolve_type_name_candidates(
+        "Model" if model_type == "Model" else model_type, available_types)
+    resolved_dataset_type_names = _resolve_type_name_candidates(
+        "Dataset" if dataset_type == "Dataset" else dataset_type, available_types)
+    if not resolved_model_type_names:
+        logger.warning(
+            "no matching artifact type names found for models",
+            extra={"requested": model_type, "available": available_types},
+        )
+    if not resolved_dataset_type_names:
+        logger.warning(
+            "no matching artifact type names found for datasets",
+            extra={"requested": dataset_type, "available": available_types},
+        )
+
     if context_name:
         ctxs = [c for c in store.get_contexts() if c.name == context_name]
         if not ctxs:
@@ -103,7 +214,7 @@ def extract_model_deps_and_datasets(
         model_ids = [
             a.id
             for a in artifacts_in_ctx
-            if is_type_match(get_type_name_by_id(a.type_id), model_type)
+            if get_type_name_by_id(a.type_id) in set(resolved_model_type_names) or get_type_name_by_id(a.type_id) == model_type
         ]
         models = store.get_artifacts_by_id(model_ids) if model_ids else []
         # Fallback: executions in context
@@ -123,28 +234,26 @@ def extract_model_deps_and_datasets(
                 model_ids2 = [
                     a.id
                     for a in out_artifacts
-                    if is_type_match(get_type_name_by_id(a.type_id), model_type)
+                    if get_type_name_by_id(a.type_id) in set(resolved_model_type_names) or get_type_name_by_id(a.type_id) == model_type
                 ]
                 models = store.get_artifacts_by_id(
                     model_ids2) if model_ids2 else []
     else:
-        # union of all types matching the short name
-        models = []
-        matched_types = get_types_matching(model_type)
-        logger.info(
-            "model types matched",
-            extra={"requested": model_type, "matched": [
-                t.name for t in matched_types]},
-        )
-        for t in matched_types:
-            try:
-                models.extend(store.get_artifacts_by_type(t.name))
-            except Exception:
-                continue
+        models = _collect_by_type_names(
+            [model_type] + resolved_model_type_names)
     if not models:
-        logger.error("no models in metadata store", extra={
-                     "model_type": model_type, "context": context_name})
-        raise RuntimeError(f"No {model_type} artifacts in MLMD store")
+        logger.error(
+            "no models in metadata store",
+            extra={
+                "requested_model_type": model_type,
+                "resolved_model_types": resolved_model_type_names,
+                "context": context_name,
+                "available_types": available_types,
+            },
+        )
+        raise RuntimeError(
+            f"No {model_type if model_type else 'Model'}-like artifacts in MLMD store"
+        )
 
     model_results = []
     for model in models:
@@ -163,7 +272,7 @@ def extract_model_deps_and_datasets(
             if input_artifact_ids:
                 arts = store.get_artifacts_by_id(input_artifact_ids)
                 for a in arts:
-                    if is_type_match(get_type_name_by_id(a.type_id), dataset_type):
+                    if get_type_name_by_id(a.type_id) in set(resolved_dataset_type_names) or get_type_name_by_id(a.type_id) == dataset_type:
                         if a.uri:
                             dataset_uri_set.add(a.uri)
                     else:
@@ -182,7 +291,7 @@ def extract_model_deps_and_datasets(
             if in_artifact_ids:
                 in_arts = store.get_artifacts_by_id(in_artifact_ids)
                 for a in in_arts:
-                    if is_type_match(get_type_name_by_id(a.type_id), dataset_type) and a.uri:
+                    if (get_type_name_by_id(a.type_id) in set(resolved_dataset_type_names) or get_type_name_by_id(a.type_id) == dataset_type) and a.uri:
                         dataset_uri_set.add(a.uri)
         logger.debug(
             "collected model relations",
@@ -194,31 +303,32 @@ def extract_model_deps_and_datasets(
             },
         )
         md = {
-            "model_name": val(model.properties, "name") or "unknown",
-            "version": val(model.properties, "version"),
-            "framework": val(model.properties, "framework"),
-            "format": val(model.properties, "format"),
+            # Prefer canonical 'name', then common alternates from KFP/Kubeflow like 'display_name'
+            "model_name": val_any(model, ["name", "model_name", "display_name"]) or "unknown",
+            "version": val_any(model, ["version", "model_version", "version_name"]),
+            "framework": val_any(model, ["framework", "ml_framework", "framework_name"]),
+            "format": val_any(model, ["format", "model_format"]),
             "uri": model.uri,
-            "properties": {k: v for k, v in all_props(model.properties).items() if k not in ("name", "version", "framework", "format")},
+            "properties": {k: v for k, v in all_props_both(model).items() if k not in ("name", "version", "framework", "format")},
             "dependencies": [
                 {
-                    "name": val(a.properties, "name"),
-                    "version": val(a.properties, "version"),
-                    "purl": val(a.properties, "purl"),
+                    "name": val_any(a, ["name", "display_name"]),
+                    "version": val_any(a, ["version", "pkg_version"]),
+                    "purl": val_any(a, ["purl", "package_url", "package-url"]),
                     "uri": a.uri,
                     "type": get_type_name_by_id(a.type_id),
-                    "properties": {k: v for k, v in all_props(a.properties).items() if k not in ("name", "version", "purl")},
+                    "properties": {k: v for k, v in all_props_both(a).items() if k not in ("name", "version", "purl")},
                 }
                 for a in deps
             ],
             "dataset_uris": sorted(dataset_uri_set),
             "produced": [
                 {
-                    "name": val(a.properties, "name"),
-                    "version": val(a.properties, "version"),
+                    "name": val_any(a, ["name", "display_name"]),
+                    "version": val_any(a, ["version", "artifact_version"]),
                     "uri": a.uri,
                     "type": get_type_name_by_id(a.type_id),
-                    "properties": {k: v for k, v in all_props(a.properties).items() if k not in ("name", "version")},
+                    "properties": {k: v for k, v in all_props_both(a).items() if k not in ("name", "version")},
                 }
                 for a in produced
             ],
@@ -238,7 +348,7 @@ def extract_model_deps_and_datasets(
         dataset_ids = [
             a.id
             for a in artifacts_in_ctx
-            if is_type_match(get_type_name_by_id(a.type_id), dataset_type)
+            if get_type_name_by_id(a.type_id) in set(resolved_dataset_type_names) or get_type_name_by_id(a.type_id) == dataset_type
         ]
         datasets = store.get_artifacts_by_id(
             dataset_ids) if dataset_ids else []
@@ -259,30 +369,21 @@ def extract_model_deps_and_datasets(
                 dataset_ids2 = [
                     a.id
                     for a in out_artifacts
-                    if is_type_match(get_type_name_by_id(a.type_id), dataset_type)
+                    if get_type_name_by_id(a.type_id) in set(resolved_dataset_type_names) or get_type_name_by_id(a.type_id) == dataset_type
                 ]
                 datasets = store.get_artifacts_by_id(
                     dataset_ids2) if dataset_ids2 else []
     else:
-        datasets = []
-        matched_types = get_types_matching(dataset_type)
-        logger.info(
-            "dataset types matched",
-            extra={"requested": dataset_type, "matched": [
-                t.name for t in matched_types]},
-        )
-        for t in matched_types:
-            try:
-                datasets.extend(store.get_artifacts_by_type(t.name))
-            except Exception:
-                continue
+        datasets = _collect_by_type_names(
+            [dataset_type] + resolved_dataset_type_names)
     dataset_results = []
     for ds in datasets:
         dataset_results.append({
-            "dataset_name": val(ds.properties, "name") or "unknown",
-            "version": val(ds.properties, "version"),
+            # Prefer 'name', then 'display_name'
+            "dataset_name": val_any(ds, ["name", "dataset_name", "display_name"]) or "unknown",
+            "version": val_any(ds, ["version", "dataset_version", "version_name"]),
             "uri": ds.uri,
-            "properties": all_props(ds.properties),
+            "properties": all_props_both(ds),
         })
     logger.info("extracted datasets", extra={
                 "count": len(dataset_results), "context": context_name})
@@ -292,28 +393,89 @@ def extract_model_deps_and_datasets(
 
 def get_models_by_property(store: "metadata_store.MetadataStore", key: str, value: str) -> List[Dict[str, Any]]:
     """Filter models by a typed property value and return their extracted metadata."""
-    def is_type_match(type_name: str, target_short: str) -> bool:
-        return type_name == target_short or type_name.endswith(f".{target_short}")
-
-    # Collect models across namespaced types
-    models: List["metadata_store_pb2.Artifact"] = []
-    try:
-        types = store.get_artifact_types()
-    except Exception:
-        types = []
-    model_type_names = [
-        t.name for t in types if is_type_match(t.name, "Model")]
-    for tn in model_type_names:
+    # Resolve model type names similar to the main extractor
+    def _available_artifact_type_names() -> List[str]:
         try:
-            models.extend(store.get_artifacts_by_type(tn))
+            ats = store.get_artifact_types()
+            return [t.name for t in ats]
         except Exception:
-            continue
-    filtered = [m for m in models if getattr(
-        m.properties.get(key, None), "string_value", None) == value]
+            return []
 
-    def val(prop_map, key):
-        v = prop_map.get(key)
-        return getattr(v, "string_value", "") if v is not None else ""
+    def _resolve_type_name_candidates(target: str, available: Iterable[str]) -> List[str]:
+        avail = list(available)
+        lower_avail = {a.lower(): a for a in avail}
+        if target in avail:
+            return [target]
+        if target.lower() in lower_avail:
+            return [lower_avail[target.lower()]]
+        synonyms: Dict[str, List[str]] = {
+            "Model": ["system.Model", "mlmd.Model", "KerasModel", "PytorchModel", "TensorFlowSavedModel", "MLModel", "ModelArtifact"],
+        }
+        cands: List[str] = []
+        for s in synonyms.get(target, []):
+            if s in avail:
+                cands.append(s)
+            elif s.lower() in lower_avail:
+                cands.append(lower_avail[s.lower()])
+        token = target.lower()
+        for a in avail:
+            al = a.lower()
+            if al == token:
+                continue
+            if al.endswith(token) or token in al:
+                if a not in cands:
+                    cands.append(a)
+        return cands
+
+    def _collect_by_type_names(type_names: List[str]) -> List["metadata_store_pb2.Artifact"]:
+        out: List["metadata_store_pb2.Artifact"] = []
+        for tn in type_names:
+            try:
+                out.extend(store.get_artifacts_by_type(tn))
+            except Exception:
+                pass
+        return out
+
+    available_types = _available_artifact_type_names()
+    resolved_model_type_names = _resolve_type_name_candidates(
+        "Model", available_types)
+    models = _collect_by_type_names(["Model"] + resolved_model_type_names)
+
+    def _value_to_python(v) -> Any:
+        try:
+            which = v.WhichOneof("value")
+        except Exception:
+            which = None
+        if which == "string_value":
+            return getattr(v, "string_value", "")
+        if which == "int_value":
+            return getattr(v, "int_value", 0)
+        if which == "double_value":
+            return getattr(v, "double_value", 0.0)
+        if hasattr(v, "string_value") and getattr(v, "string_value", None) not in (None, ""):
+            return v.string_value
+        if hasattr(v, "int_value"):
+            return v.int_value
+        if hasattr(v, "double_value"):
+            return v.double_value
+        return ""
+
+    def _get_both(m: "metadata_store_pb2.Artifact", k: str) -> Any:
+        v = m.properties.get(k)
+        if v is not None:
+            return _value_to_python(v)
+        try:
+            cv = m.custom_properties.get(k)
+        except Exception:
+            cv = None
+        if cv is not None:
+            return _value_to_python(cv)
+        return ""
+
+    filtered = [m for m in models if str(_get_both(m, key)) == str(value)]
+
+    def val(m, key):
+        return _get_both(m, key)
 
     # Cache for type resolution
     type_name_cache: Dict[int, str] = {}
@@ -340,16 +502,16 @@ def get_models_by_property(store: "metadata_store.MetadataStore", key: str, valu
                 arts = store.get_artifacts_by_id(input_artifact_ids)
                 deps.extend(arts)
         md = {
-            "model_name": val(model.properties, "name") or "unknown",
-            "version": val(model.properties, "version"),
-            "framework": val(model.properties, "framework"),
-            "format": val(model.properties, "format"),
+            "model_name": val(model, "name") or "unknown",
+            "version": val(model, "version"),
+            "framework": val(model, "framework"),
+            "format": val(model, "format"),
             "uri": model.uri,
             "dependencies": [
                 {
-                    "name": val(a.properties, "name"),
-                    "version": val(a.properties, "version"),
-                    "purl": val(a.properties, "purl"),
+                    "name": val(a, "name"),
+                    "version": val(a, "version"),
+                    "purl": val(a, "purl"),
                     "uri": a.uri,
                     "type": get_type_name_by_id(a.type_id),
                 }

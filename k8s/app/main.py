@@ -92,6 +92,19 @@ def safe_filename(s: str) -> str:
     return "".join(c if c.isalnum() or c in ("-", "_", ".") else "-" for c in s)
 
 
+def safe_token(value: Any, default_token: str) -> str:
+    """Return a sanitized token for filenames. If value is missing/empty after
+    sanitization, use default_token. Prevents outputs like 'unknown-'."""
+    try:
+        raw = str(value) if value is not None else ""
+    except Exception:
+        raw = ""
+    token = safe_filename(raw).strip("-").strip()
+    if not token:
+        token = safe_filename(default_token)
+    return token
+
+
 def version_key(v: str) -> tuple:
     parts = []
     for p in (v or "").split("."):
@@ -139,7 +152,7 @@ def group_models_by_name(mds: List[Dict[str, Any]]):
 
 def get_parent_bom_info(cdx_dir: Path, parent: Dict[str, Any], idx: int) -> tuple:
     safe = safe_filename
-    prev_base = f"{safe(parent.get('model_name', 'model'))}-{safe(parent.get('version', str(idx-1)))}"
+    prev_base = f"{safe(parent.get('model_name', 'model'))}-{safe_token(parent.get('version'), str(idx-1))}"
     parent_cx_url = str((cdx_dir / f"{prev_base}.cyclonedx.json").as_uri())
     prev_cx_path = cdx_dir / f"{prev_base}.cyclonedx.json"
     parent_bom_serial = None
@@ -177,8 +190,8 @@ def emit_per_model_boms(by_name: Dict[str, List[Dict[str, Any]]], cdx_dir: Path)
         bom_cache: Dict[str, Any] = {}
         for idx, item in enumerate(items):
             model_name = item.get("model_name", "model")
-            version = item.get("version", f"{idx}")
-            base = f"{safe_filename(model_name)}-{safe_filename(version)}"
+            version = item.get("version") or f"{idx}"
+            base = f"{safe_filename(model_name)}-{safe_token(version, str(idx))}"
             logger.debug("build model BOM", extra={
                 "model": model_name, "version": version, "uri": item.get("uri")})
             bom_cache[base] = create_model_bom(item)
@@ -187,8 +200,8 @@ def emit_per_model_boms(by_name: Dict[str, List[Dict[str, Any]]], cdx_dir: Path)
         for idx in range(1, len(items)):
             parent_item = items[idx - 1]
             child_item = items[idx]
-            parent_base = f"{safe_filename(parent_item.get('model_name', 'model'))}-{safe_filename(parent_item.get('version', f'{idx-1}'))}"
-            child_base = f"{safe_filename(child_item.get('model_name', 'model'))}-{safe_filename(child_item.get('version', f'{idx}'))}"
+            parent_base = f"{safe_filename(parent_item.get('model_name', 'model'))}-{safe_token(parent_item.get('version'), str(idx-1))}"
+            child_base = f"{safe_filename(child_item.get('model_name', 'model'))}-{safe_token(child_item.get('version'), str(idx))}"
             parent_bom = bom_cache[parent_base]
             child_bom = bom_cache[child_base]
             logger.debug("link lineage (parent<->child)", extra={
@@ -200,8 +213,8 @@ def emit_per_model_boms(by_name: Dict[str, List[Dict[str, Any]]], cdx_dir: Path)
         # 3) Write all BOMs once
         for idx, item in enumerate(items):
             model_name = item.get("model_name", "model")
-            version = item.get("version", f"{idx}")
-            base = f"{safe_filename(model_name)}-{safe_filename(version)}"
+            version = item.get("version") or f"{idx}"
+            base = f"{safe_filename(model_name)}-{safe_token(version, str(idx))}"
             write_cyclonedx_files(
                 bom_cache[base],
                 out_json=str(cdx_dir / f"{base}.cyclonedx.json"),
@@ -226,8 +239,8 @@ def emit_dataset_boms(by_name: Dict[str, List[Dict[str, Any]]], cdx_dir: Path):
         bom_cache: Dict[str, Any] = {}
         for idx, item in enumerate(items):
             ds_name = item.get("dataset_name") or item.get("name", "dataset")
-            version = item.get("version", f"{idx}")
-            base = f"{safe_filename(ds_name)}-{safe_filename(version)}"
+            version = item.get("version") or f"{idx}"
+            base = f"{safe_filename(ds_name)}-{safe_token(version, str(idx))}"
             logger.debug("build dataset BOM", extra={
                          "dataset": ds_name, "version": version, "uri": item.get("uri")})
             bom_cache[base] = create_dataset_bom(item)
@@ -235,15 +248,15 @@ def emit_dataset_boms(by_name: Dict[str, List[Dict[str, Any]]], cdx_dir: Path):
         for idx in range(1, len(items)):
             parent_item = items[idx - 1]
             child_item = items[idx]
-            parent_base = f"{safe_filename(parent_item.get('dataset_name') or parent_item.get('name', 'dataset'))}-{safe_filename(parent_item.get('version', f'{idx-1}'))}"
-            child_base = f"{safe_filename(child_item.get('dataset_name') or child_item.get('name', 'dataset'))}-{safe_filename(child_item.get('version', f'{idx}'))}"
+            parent_base = f"{safe_filename(parent_item.get('dataset_name') or parent_item.get('name', 'dataset'))}-{safe_token(parent_item.get('version'), str(idx-1))}"
+            child_base = f"{safe_filename(child_item.get('dataset_name') or child_item.get('name', 'dataset'))}-{safe_token(child_item.get('version'), str(idx))}"
             add_dataset_lineage_relation(
                 bom_cache[parent_base], bom_cache[child_base])
         # Write all BOMs
         for idx, item in enumerate(items):
             ds_name = item.get("dataset_name") or item.get("name", "dataset")
-            version = item.get("version", f"{idx}")
-            base = f"{safe_filename(ds_name)}-{safe_filename(version)}"
+            version = item.get("version") or f"{idx}"
+            base = f"{safe_filename(ds_name)}-{safe_token(version, str(idx))}"
             write_cyclonedx_files(
                 bom_cache[base],
                 out_json=str(cdx_dir / f"{base}.cyclonedx.json"),
@@ -261,7 +274,7 @@ def emit_model_dataset_relations(models: List[Dict[str, Any]], datasets: List[Di
     for name, items in models_by_name.items():
         items.sort(key=lambda x: version_key(x.get("version", "")))
         for idx, item in enumerate(items):
-            base = f"{safe_filename(item.get('model_name', 'model'))}-{safe_filename(item.get('version', f'{idx}'))}"
+            base = f"{safe_filename(item.get('model_name', 'model'))}-{safe_token(item.get('version'), str(idx))}"
             model_boms[base] = create_model_bom(item)
 
     # Build dataset BOMs (in memory, do not write yet)
@@ -271,7 +284,7 @@ def emit_model_dataset_relations(models: List[Dict[str, Any]], datasets: List[Di
         items.sort(key=lambda x: version_key(x.get("version", "")))
         for idx, item in enumerate(items):
             ds_name = item.get("dataset_name") or item.get("name", "dataset")
-            base = f"{safe_filename(ds_name)}-{safe_filename(item.get('version', f'{idx}'))}"
+            base = f"{safe_filename(ds_name)}-{safe_token(item.get('version'), str(idx))}"
             dataset_boms[base] = create_dataset_bom(item)
             uri = item.get("uri")
             if uri:
@@ -282,8 +295,8 @@ def emit_model_dataset_relations(models: List[Dict[str, Any]], datasets: List[Di
         for idx in range(1, len(items)):
             p = items[idx-1]
             c = items[idx]
-            p_base = f"{safe_filename(p.get('model_name', 'model'))}-{safe_filename(p.get('version', f'{idx-1}'))}"
-            c_base = f"{safe_filename(c.get('model_name', 'model'))}-{safe_filename(c.get('version', f'{idx}'))}"
+            p_base = f"{safe_filename(p.get('model_name', 'model'))}-{safe_token(p.get('version'), str(idx-1))}"
+            c_base = f"{safe_filename(c.get('model_name', 'model'))}-{safe_token(c.get('version'), str(idx))}"
             add_model_lineage_relation(model_boms[p_base], model_boms[c_base])
 
     # Add dataset lineage (in memory)
@@ -291,15 +304,15 @@ def emit_model_dataset_relations(models: List[Dict[str, Any]], datasets: List[Di
         for idx in range(1, len(items)):
             p = items[idx-1]
             c = items[idx]
-            p_base = f"{safe_filename(p.get('dataset_name') or p.get('name', 'dataset'))}-{safe_filename(p.get('version', f'{idx-1}'))}"
-            c_base = f"{safe_filename(c.get('dataset_name') or c.get('name', 'dataset'))}-{safe_filename(c.get('version', f'{idx}'))}"
+            p_base = f"{safe_filename(p.get('dataset_name') or p.get('name', 'dataset'))}-{safe_token(p.get('version'), str(idx-1))}"
+            c_base = f"{safe_filename(c.get('dataset_name') or c.get('name', 'dataset'))}-{safe_token(c.get('version'), str(idx))}"
             add_dataset_lineage_relation(
                 dataset_boms[p_base], dataset_boms[c_base])
 
     # Add model ↔ dataset relations (in memory)
     for name, items in models_by_name.items():
         for idx, m in enumerate(items):
-            m_base = f"{safe_filename(m.get('model_name', 'model'))}-{safe_filename(m.get('version', f'{idx}'))}"
+            m_base = f"{safe_filename(m.get('model_name', 'model'))}-{safe_token(m.get('version'), str(idx))}"
             ds_uris = m.get("dataset_uris", []) or []
             for uri in ds_uris:
                 key = uri_to_ds_key.get(uri)
