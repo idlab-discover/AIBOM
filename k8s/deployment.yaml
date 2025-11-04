@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlmd-bom-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mlmd-bom-app
+  template:
+    metadata:
+      labels:
+        app: mlmd-bom-app
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: mlmd-bom-app
+        image: wiebevandendriessche/mlmd-bom-app:latest
+        imagePullPolicy: Always
+        env:
+        - name: EXTRACT_CONTEXT
+          value: ""
+        - name: SCENARIO_YAML
+          value: "scenarios/realistic-mlops.yaml"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: LOG_FORMAT
+          value: "plain"
+        - name: MYSQL_HOST
+          value: "mysql"
+        - name: MYSQL_PORT
+          value: "3306"
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: username
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        - name: MYSQL_DATABASE
+          value: "metadb"
+        volumeMounts:
+        - name: output
+          mountPath: /app/output
+        - name: logs
+          mountPath: /app/logs
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+      volumes:
+      - name: output
+        persistentVolumeClaim:
+          claimName: mlmd-bom-output-pvc
+      - name: logs
+        emptyDir: {}

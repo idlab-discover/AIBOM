@@ -10,4 +10,9 @@ RUN pip install --upgrade pip && \
 # Copy application source from build context (./app)
 COPY . /app/
 
+
+# Create a non-root user with numeric UID 1000 and switch to it
+RUN useradd -u 1000 -m appuser && chown -R 1000 /app
+USER 1000
+
 CMD ["python", "main.py"]
